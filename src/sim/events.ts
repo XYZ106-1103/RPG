@@ -5,7 +5,7 @@
  * sim이 정의하므로 Babylon 타입을 쓰지 않는다. 페이로드는 나중에 네트워크로 보낼 수 있도록
  * 직렬화 가능한 평범한 객체(숫자 id, {x,y,z})만 담는다.
  *
- * TODO: 지금은 자리만 잡아 둔 상태. 전투/AI 구현 시 필드를 확정하고 이벤트를 추가한다.
+ * TODO: AI/아이템 구현 시 이벤트를 추가한다.
  */
 
 import type { EntityId } from "./entity";
@@ -15,18 +15,55 @@ export type { EntityId };
 
 export interface AttackStartEvent {
   attacker: EntityId;
-  /** 애니메이션 이름 규칙의 공격 이름 (attack_light_1 등) */
+  /** 공격 데이터 id (data/attacks.ts) */
   attack: string;
+  /** 공격 인스턴스 id */
+  instance: number;
 }
 
 export interface HitEvent {
   attacker: EntityId;
   target: EntityId;
+  attack: string;
+  /** 실제로 깎인 체력 */
   damage: number;
   /** 타격 지점 (월드 좌표) — 이펙트/카메라 셰이크 기준 */
   point: Vec3;
-  /** 가드로 막았는가 */
-  blocked: boolean;
+  /** 등 뒤에서 맞았는가 (피격 리액션 hit_back, 가드/패리 불가) */
+  backAttack: boolean;
+  /** 히트스톱 프레임 (2~4) */
+  hitstopFrames: number;
+  /** 넉백 속도 벡터 (m/s, 수평) */
+  knockback: Vec3;
+  /** 이 공격으로 강인도가 붕괴했는가 */
+  staggered: boolean;
+  /** 이 공격으로 사망했는가 (뒤이어 death 이벤트가 온다) */
+  killed: boolean;
+}
+
+export interface GuardEvent {
+  attacker: EntityId;
+  /** 가드한 쪽 */
+  target: EntityId;
+  attack: string;
+  /** 가드를 뚫고 들어온 체력 피해 */
+  chipDamage: number;
+  /** 깎인 스태미나 */
+  staminaDamage: number;
+  /** 스태미나가 바닥나 가드가 깨졌는가 (가드한 쪽이 경직된다) */
+  broken: boolean;
+  point: Vec3;
+  hitstopFrames: number;
+  knockback: Vec3;
+}
+
+export interface ParryEvent {
+  /** 패리에 성공한 쪽 */
+  parrier: EntityId;
+  /** 패리당해 경직된 공격자 */
+  attacker: EntityId;
+  attack: string;
+  point: Vec3;
 }
 
 export interface DeathEvent {
@@ -43,6 +80,8 @@ export interface StaggerEvent {
 export interface GameEventMap {
   attack_start: AttackStartEvent;
   hit: HitEvent;
+  guard: GuardEvent;
+  parry: ParryEvent;
   death: DeathEvent;
   /** 강인도 붕괴로 경직 시작 */
   stagger: StaggerEvent;

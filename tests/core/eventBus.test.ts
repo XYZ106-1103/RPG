@@ -5,9 +5,14 @@ import type { GameEventMap, HitEvent } from "../../src/sim/events";
 const hit = (damage: number): HitEvent => ({
   attacker: 1,
   target: 2,
+  attack: "attack_light_1",
   damage,
   point: { x: 0, y: 1, z: 0 },
-  blocked: false,
+  backAttack: false,
+  hitstopFrames: 3,
+  knockback: { x: 0, y: 0, z: 1.5 },
+  staggered: false,
+  killed: false,
 });
 
 describe("EventBus", () => {
@@ -120,7 +125,7 @@ describe("EventBus", () => {
     bus.on("death", (e) => order.push(`death:${e.entity}`));
 
     // 스텝 1
-    bus.enqueue("attack_start", { attacker: 1, attack: "attack_light_1" });
+    bus.enqueue("attack_start", { attacker: 1, attack: "attack_light_1", instance: 1 });
     // 스텝 2
     bus.enqueue("hit", hit(30));
     bus.enqueue("death", { entity: 2, killer: 1 });

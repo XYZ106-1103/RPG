@@ -22,12 +22,12 @@ export function applyPoiseDamage(e: Entity, amount: number, sink?: EventSink): b
   return true;
 }
 
-/** 강인도 붕괴: 경직 시작. 진행 중이던 스프린트/가드/슈퍼아머는 끊긴다. */
+/** 강인도 붕괴: 경직 시작. 진행 중이던 스프린트/가드/슈퍼아머/패리 윈도우는 끊긴다. */
 export function breakPoise(e: Entity, sink?: EventSink): void {
   const a = ARCHETYPES[e.archetype];
   e.poise = POISE_RULES.resetOnBreak ? e.maxPoise : 0;
   e.staggerTicks = Math.max(1, secondsToTicks(a.staggerSeconds));
-  e.flags = (e.flags | FLAG.STAGGERED) & ~(FLAG.SPRINTING | FLAG.GUARDING | FLAG.SUPER_ARMOR);
+  e.flags = (e.flags | FLAG.STAGGERED) & ~(FLAG.SPRINTING | FLAG.GUARDING | FLAG.SUPER_ARMOR | FLAG.PARRY);
   sink?.emit("stagger", { entity: e.id, durationTicks: e.staggerTicks });
 }
 

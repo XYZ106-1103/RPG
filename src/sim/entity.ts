@@ -25,6 +25,8 @@ export const FLAG = {
   INVULNERABLE: 1 << 4,
   /** 슈퍼아머 (강공격 등) — 강인도 피해 감소 */
   SUPER_ARMOR: 1 << 5,
+  /** 패리 윈도우 — 이 동안 정면에서 패리 가능한 공격을 받으면 상대가 경직된다 (액션/애니메이션이 켜고 끈다) */
+  PARRY: 1 << 6,
 } as const;
 
 export type FlagName = keyof typeof FLAG;
