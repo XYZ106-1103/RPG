@@ -4,6 +4,7 @@ import { POISE_RULES } from "../../src/sim/data/poise";
 import { STAMINA_ACTIONS, STAMINA_RULES } from "../../src/sim/data/stamina";
 import { ATTACKS } from "../../src/sim/data/attacks";
 import { COMBAT_RULES } from "../../src/sim/data/combat";
+import { PLAYER_TIMELINES } from "../../src/sim/data/playerTimelines";
 
 /** 밸런스 조정 중 실수(음수, 0, 오타)를 잡는 데이터 검증 */
 describe("데이터 테이블", () => {
@@ -52,5 +53,34 @@ describe("공격 데이터 (AttackDef)", () => {
     // 가드 정면 아크와 백어택 아크가 겹치지 않아야 한다 (같은 공격이 가드 가능하면서 백어택일 수 없음)
     expect(COMBAT_RULES.guardHalfAngleDeg + COMBAT_RULES.backAttackHalfAngleDeg).toBeLessThanOrEqual(180);
     expect(COMBAT_RULES.backAttackDamageMultiplier).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("플레이어 타임라인 (PLAYER_TIMELINES)", () => {
+  it.each(Object.entries(PLAYER_TIMELINES))("%s 구간이 길이 안에 있고 순서가 맞다", (id, tl) => {
+    expect(Number.isInteger(tl.length) && tl.length > 0).toBe(true);
+    for (const w of [tl.hit, tl.iframes, tl.superArmor, tl.buffer]) {
+      if (!w) continue;
+      expect(w.start).toBeGreaterThanOrEqual(0);
+      expect(w.end).toBeGreaterThan(w.start);
+      expect(w.end).toBeLessThanOrEqual(tl.length);
+    }
+    expect(tl.cancel).toBeGreaterThan(0);
+    expect(tl.cancel).toBeLessThanOrEqual(tl.length);
+    // 버퍼는 캔슬 전에 열려야 예약이 의미가 있다
+    if (tl.buffer) expect(tl.buffer.start).toBeLessThan(tl.cancel);
+    // 판정이 끝나기 전에 캔슬되면 공격이 잘린다
+    if (tl.hit) expect(tl.cancel).toBeGreaterThanOrEqual(tl.hit.end);
+    // 공격 행동은 판정 구간과 공격 데이터가 있어야 한다
+    if (id.startsWith("attack_")) {
+      expect(tl.hit).toBeDefined();
+      expect(Object.keys(ATTACKS)).toContain(id);
+    }
+    if (tl.effect !== undefined) expect(tl.effect).toBeLessThan(tl.length);
+  });
+
+  it("구르기/백스텝은 무적 구간이 있다", () => {
+    expect(PLAYER_TIMELINES.roll.iframes).toBeDefined();
+    expect(PLAYER_TIMELINES.backstep.iframes).toBeDefined();
   });
 });
