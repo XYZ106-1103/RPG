@@ -37,7 +37,11 @@ export class InputDebugOverlay {
     for (const a of BUTTON_ACTIONS) if (frame.pressed & BUTTON[a]) this.lastPressedAt.set(a, nowMs);
   }
 
-  update(frame: Readonly<InputFrame>, info: { device: string; pointerLocked: boolean; gamepad: boolean; lanternOn: boolean }, nowMs: number): void {
+  update(
+    frame: Readonly<InputFrame>,
+    info: { device: string; pointerLocked: boolean; gamepad: boolean; lanternOn: boolean; extra?: readonly string[] },
+    nowMs: number,
+  ): void {
     const held: string[] = [];
     const flashed: string[] = [];
     for (const a of BUTTON_ACTIONS) {
@@ -53,6 +57,7 @@ export class InputDebugOverlay {
       `held: ${held.join(", ") || "-"}`,
       `pressed: ${flashed.join(", ") || "-"}`,
       `등불: ${info.lanternOn ? "켜짐" : "꺼짐"}`,
+      ...(info.extra ?? []),
     ];
     const text = lines.join("\n");
     if (text !== this.lastText) {
