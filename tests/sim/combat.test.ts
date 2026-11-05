@@ -334,6 +334,66 @@ describe("피격과 백어택", () => {
   });
 });
 
+describe("벽 튕김 (weapon_bounce)", () => {
+  class BlockingQuery implements HitQuery {
+    targets: EntityId[] = [];
+    blockAt: { x: number; y: number; z: number } | null = { x: 0, y: 1, z: 1 };
+    calls = 0;
+    sweep(_req: Readonly<SweepRequest>, out: HitCandidate[]) {
+      this.calls++;
+      for (const t of this.targets) out.push({ target: t, point: vec3(0, 1, 0.5) });
+      return this.blockAt ? { point: vec3(this.blockAt.x, this.blockAt.y, this.blockAt.z), normal: vec3(0, 0, -1) } : null;
+    }
+  }
+
+  it("막히기 전 대상은 맞고, 그 뒤 weapon_bounce를 내고 공격이 끝난다", () => {
+    const q = new BlockingQuery();
+    q.targets = [hollow.id];
+    world = new SimWorld({ hitQuery: q });
+    player = world.spawn("player", "player", { x: 0, y: 0, z: 0 }, 0);
+    hollow = world.spawn("hollow", "enemy", { x: 0, y: 0, z: 1.5 }, Math.PI);
+    const inst = world.combat.start(world, player, "attack_light_1");
+    if (!inst) throw new Error("start failed");
+    world.combat.setActive(inst.id, true);
+    world.step();
+    const evs = world.drainEvents();
+    expect(types(evs)).toEqual(["hit", "weapon_bounce"]);
+    const b = evs.find((e) => e.type === "weapon_bounce");
+    expect(b?.type === "weapon_bounce" && b.payload).toMatchObject({ attacker: player.id, attack: "attack_light_1", instance: inst.id, point: { x: 0, y: 1, z: 1 }, normal: { x: 0, y: 0, z: -1 } });
+    expect(world.combat.get(inst.id)).toBeUndefined();
+    world.step();
+    expect(q.calls).toBe(1); // 끝난 공격은 더 스윕하지 않는다
+  });
+
+  it("막히지 않으면 튕김 없이 계속 판정한다", () => {
+    const q = new BlockingQuery();
+    q.blockAt = null;
+    world = new SimWorld({ hitQuery: q });
+    player = world.spawn("player", "player", { x: 0, y: 0, z: 0 }, 0);
+    const inst = world.combat.start(world, player, "attack_light_1");
+    if (!inst) throw new Error("start failed");
+    world.combat.setActive(inst.id, true);
+    world.step();
+    world.step();
+    expect(q.calls).toBe(2);
+    expect(types(world.drainEvents())).toEqual([]);
+  });
+
+  it("패리로 끝난 공격은 튕김 이벤트를 내지 않는다", () => {
+    const q = new BlockingQuery();
+    world = new SimWorld({ hitQuery: q });
+    player = world.spawn("player", "player", { x: 0, y: 0, z: 0 }, 0);
+    hollow = world.spawn("hollow", "enemy", { x: 0, y: 0, z: 1.5 }, Math.PI);
+    q.targets = [player.id];
+    player.flags |= FLAG.PARRY;
+    const inst = world.combat.start(world, hollow, "hollow_slash");
+    if (!inst) throw new Error("start failed");
+    world.combat.setActive(inst.id, true);
+    world.step();
+    expect(types(world.drainEvents())).toEqual(["parry", "stagger"]);
+  });
+});
+
 describe("방향 판정", () => {
   const at = (x: number, z: number, yaw: number) => world.spawn("hollow", "enemy", { x, y: 0, z }, yaw);
   it("정면 ±70° 안이면 가드 가능, 옆구리/등은 불가", () => {

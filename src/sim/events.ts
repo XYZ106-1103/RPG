@@ -66,6 +66,15 @@ export interface ParryEvent {
   point: Vec3;
 }
 
+export interface WeaponBounceEvent {
+  attacker: EntityId;
+  attack: string;
+  instance: number;
+  /** 칼날이 벽에 닿은 지점 — 불꽃/효과음 위치 */
+  point: Vec3;
+  normal: Vec3;
+}
+
 export interface DeathEvent {
   entity: EntityId;
   killer: EntityId | null;
@@ -102,6 +111,8 @@ export interface GameEventMap {
   hit: HitEvent;
   guard: GuardEvent;
   parry: ParryEvent;
+  /** 무기가 벽(환경)에 막혀 튕김 — 그 공격은 끝난다 */
+  weapon_bounce: WeaponBounceEvent;
   death: DeathEvent;
   /** 강인도 붕괴로 경직 시작 */
   stagger: StaggerEvent;

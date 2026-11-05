@@ -125,12 +125,24 @@ export class CombatSystem {
 
         const out = this.candidates;
         out.length = 0;
-        this.hitQuery.sweep({ attacker, instance: inst, def: ATTACKS[inst.attack], tick: world.tick }, out);
+        const block = this.hitQuery.sweep({ attacker, instance: inst, def: ATTACKS[inst.attack], tick: world.tick }, out);
         if (out.length > 1) out.sort((a, b) => a.target - b.target); // 결정성: 물리 결과 순서에 의존하지 않는다
         for (const c of out) {
           if (this.ended.has(inst.id)) break; // 패리당하면 남은 대상은 판정하지 않는다
           const target = world.get(c.target);
           if (target) resolveHit(ctx, inst, attacker, target, c.point);
+        }
+        // 벽에 막힘: 막히기 전 대상까지 판정한 뒤 튕김 이벤트를 내고 공격을 끝낸다
+        // TODO(애니메이션): 튕김 리액션 애니메이션/경직
+        if (block && !this.ended.has(inst.id)) {
+          world.emit("weapon_bounce", {
+            attacker: attacker.id,
+            attack: inst.attack,
+            instance: inst.id,
+            point: { x: block.point.x, y: block.point.y, z: block.point.z },
+            normal: { x: block.normal.x, y: block.normal.y, z: block.normal.z },
+          });
+          this.end(inst.id);
         }
       }
     } finally {

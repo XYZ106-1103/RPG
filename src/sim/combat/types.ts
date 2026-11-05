@@ -36,12 +36,20 @@ export interface HitCandidate {
   point: Vec3;
 }
 
+/** 칼날이 벽(환경)에 막힌 지점 */
+export interface SweepBlock {
+  point: Vec3;
+  /** 막힌 면의 법선 (월드) */
+  normal: Vec3;
+}
+
 export interface HitQuery {
   /**
    * 이번 틱 동안 무기 판정 캡슐(반경 def.hitbox.radius)이 직전 위치 → 현재 위치로 스윕하며 겹친 엔티티를 out에 넣는다.
    * 필터링(자기 자신, 같은 팀, 이미 맞음, 무적)은 sim이 하므로 구현은 겹친 것을 모두 넣으면 된다. 순서는 상관없다.
+   * @returns 칼날이 벽에 막혔으면 그 지점 (이때 out에는 막히기 전에 닿은 대상만 넣는다). 막히지 않았으면 null/undefined
    */
-  sweep(request: Readonly<SweepRequest>, out: HitCandidate[]): void;
+  sweep(request: Readonly<SweepRequest>, out: HitCandidate[]): SweepBlock | null | void;
 }
 
 /** 아무것도 맞지 않는 기본 구현 (물리가 주입되기 전) */
