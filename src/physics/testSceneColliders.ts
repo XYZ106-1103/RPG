@@ -12,6 +12,7 @@ import type { PhysicsBody } from "@babylonjs/core/Physics/v2/physicsBody";
 import { PhysicsShapeBox, PhysicsShapeCapsule } from "@babylonjs/core/Physics/v2/physicsShape";
 import type { Scene } from "@babylonjs/core/scene";
 import type { PhysicsWorld } from "./physicsWorld";
+import { createRamp, createStairs, createStaticBox } from "./testGeometry";
 
 export interface TestSceneColliders {
   /** 플레이어 캡슐 충돌체 노드 — 고정 스텝에서 sim 위치로 옮긴다 (발밑 중앙 원점) */
@@ -63,14 +64,42 @@ export function createTestSceneColliders(world: PhysicsWorld, scene: Scene): Tes
   crate.freezeWorldMatrix();
   world.createBody(crate, { layer: "ENVIRONMENT", shape: new PhysicsShapeBox(Vector3.Zero(), Quaternion.Identity(), new Vector3(1, 1, 1), scene) });
 
-  // 트리거 영역 (보이지 않음 — F3으로 확인) + 위치 표시용 바닥 판
+  // 트리거 영역 (보이지 않음 — F3으로 확인) + 위치 표시용 바닥 판 (오른쪽 뒤)
   const trigger = new TransformNode("testTrigger", scene);
-  trigger.position.set(-4, 1, 3);
+  trigger.position.set(8, 1, -6);
   const triggerBody = world.createTrigger(trigger, new PhysicsShapeBox(Vector3.Zero(), Quaternion.Identity(), new Vector3(3, 2, 3), scene));
   const marker = CreateBox("triggerMarker", { width: 3, height: 0.02, depth: 3 }, scene);
-  marker.position.set(-4, 0.011, 3);
+  marker.position.set(8, 0.011, -6);
   marker.material = pbr("triggerMarkerMat", new Color3(0.45, 0.38, 0.12), scene);
   marker.freezeWorldMatrix();
 
+  createTraversalCourse(world, scene);
+
   return { playerCollider, playerBody, triggerBody };
+}
+
+const STONE = new Color3(0.32, 0.3, 0.28);
+const STONE_DARK = new Color3(0.22, 0.2, 0.19);
+const STONE_WARM = new Color3(0.36, 0.3, 0.24);
+
+/**
+ * 캐릭터 컨트롤러 확인용 지형 (모두 ENVIRONMENT 정적 박스). 플레이어는 원점에서 +Z를 보고 시작한다.
+ *  - 오른쪽 앞: 0.2m × 5단 계단 + 층계참
+ *  - 왼쪽 앞: 30° 경사로(오를 수 있음) + 꼭대기 단, 더 왼쪽에 55° 경사로(못 오르고 미끄러짐)
+ *  - 정면 멀리: 벽
+ *  - 뒤쪽: 낮은 턱 0.25m(넘어감, 오른쪽) / 0.5m(막힘, 왼쪽)
+ */
+function createTraversalCourse(world: PhysicsWorld, scene: Scene): void {
+  createStairs(world, scene, { start: new Vector3(6, 0, 2), steps: 5, stepHeight: 0.2, stepDepth: 0.45, width: 2.5, visual: { color: STONE } });
+  createStaticBox(world, scene, { center: new Vector3(6, 0.5, 2 + 2.25 + 1.5), size: new Vector3(2.5, 1, 3), visual: { color: STONE }, name: "landing" });
+
+  createRamp(world, scene, { start: new Vector3(-6, 0, 2), yaw: 0, angleDeg: 30, length: 6, width: 3, visual: { color: STONE_WARM } });
+  const rampTopZ = 2 + 6 * Math.cos(Math.PI / 6);
+  createStaticBox(world, scene, { center: new Vector3(-6, 1.5, rampTopZ + 1.5), size: new Vector3(3, 3, 3), visual: { color: STONE_WARM }, name: "rampTop" });
+  createRamp(world, scene, { start: new Vector3(-11, 0, 2), yaw: 0, angleDeg: 55, length: 4, width: 3, visual: { color: STONE_DARK } });
+
+  createStaticBox(world, scene, { center: new Vector3(0, 1.5, 12), size: new Vector3(8, 3, 0.5), visual: { color: STONE_DARK }, name: "wall" });
+
+  createStaticBox(world, scene, { center: new Vector3(3, 0.125, -5), size: new Vector3(3, 0.25, 3), visual: { color: STONE }, name: "curb25" });
+  createStaticBox(world, scene, { center: new Vector3(-3, 0.25, -5), size: new Vector3(3, 0.5, 3), visual: { color: STONE }, name: "ledge50" });
 }
