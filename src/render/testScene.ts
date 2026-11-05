@@ -7,9 +7,10 @@ import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateCapsule } from "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Scene } from "@babylonjs/core/scene";
 
 /** 태양이 꺼진 세계의 하늘색 (거의 검정에 가까운 남색) */
@@ -18,7 +19,13 @@ const SKY_COLOR = new Color4(0.012, 0.014, 0.022, 1);
 const CAPSULE_HEIGHT = 1.8;
 const CAPSULE_RADIUS = 0.35;
 
-export function createTestScene(engine: AbstractEngine, canvas: HTMLCanvasElement): Scene {
+export interface TestScene {
+  scene: Scene;
+  /** 발밑 중앙이 원점인 캡슐 루트 — 위치/회전을 직접 갱신한다 (월드 행렬 동결 안 함) */
+  capsule: Mesh;
+}
+
+export function createTestScene(engine: AbstractEngine, canvas: HTMLCanvasElement): TestScene {
   const scene = new Scene(engine);
   scene.clearColor = SKY_COLOR;
   // 환경맵(IBL)이 없으므로 앰비언트는 0 — 포인트 라이트(등불)만 광원
@@ -42,23 +49,24 @@ export function createTestScene(engine: AbstractEngine, canvas: HTMLCanvasElemen
   groundMat.freeze();
   ground.freezeWorldMatrix();
 
-  // 캡슐 (발밑 중앙이 원점이 되도록 반 높이만큼 올린다)
+  // 캡슐 (발밑 중앙이 원점이 되도록 정점을 반 높이만큼 올린다)
   const capsule = CreateCapsule("capsule", { height: CAPSULE_HEIGHT, radius: CAPSULE_RADIUS, tessellation: 24, subdivisions: 4 }, scene);
-  capsule.position.y = CAPSULE_HEIGHT / 2;
+  capsule.bakeTransformIntoVertices(Matrix.Translation(0, CAPSULE_HEIGHT / 2, 0));
   const capsuleMat = new PBRMaterial("capsuleMat", scene);
   capsuleMat.albedoColor = new Color3(0.55, 0.5, 0.45);
   capsuleMat.metallic = 0;
   capsuleMat.roughness = 0.6;
   capsule.material = capsuleMat;
   capsuleMat.freeze();
-  capsule.freezeWorldMatrix();
+  // 움직이는 메시이므로 freezeWorldMatrix()는 하지 않는다
 
-  // 포인트 라이트 하나 — 플레이어 허리의 등불 위치를 흉내낸다 (따뜻한 불빛)
+  // 포인트 라이트 하나 — 플레이어 허리의 등불 (캡슐 오른쪽 허리에 붙어 함께 움직인다)
   const lantern = new PointLight("lantern", new Vector3(0.45, 1.05, -0.35), scene);
+  lantern.parent = capsule;
   lantern.diffuse = new Color3(1.0, 0.62, 0.3);
   lantern.specular = new Color3(1.0, 0.7, 0.4);
   lantern.intensity = 6;
   lantern.range = 18;
 
-  return scene;
+  return { scene, capsule };
 }
