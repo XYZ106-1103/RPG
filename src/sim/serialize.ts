@@ -13,8 +13,8 @@ import { PLAYER_STATES, PLAYER_VERBS, type PlayerState, type PlayerStateId, type
 import { ALL_FLAGS, TEAMS, type Entity, type Team } from "./entity";
 import { SimWorld, type SimWorldOptions, type WorldState } from "./world";
 
-/** 1: 엔티티만 / 2: 진행 중인 공격(combat) 추가 / 3: 플레이어 행동 상태 머신(players) 추가 */
-export const SNAPSHOT_VERSION = 3;
+/** 1: 엔티티만 / 2: 진행 중인 공격(combat) / 3: 플레이어 행동 상태 머신(players) / 4: 접지(grounded), 루트 모션 의도 */
+export const SNAPSHOT_VERSION = 4;
 
 export interface WorldSnapshot extends WorldState {
   version: typeof SNAPSHOT_VERSION;
@@ -73,6 +73,12 @@ function nonNeg(obj: Record<string, unknown>, key: string, path: string): number
   return v;
 }
 
+function bool(obj: Record<string, unknown>, key: string, path: string): boolean {
+  const v = obj[key];
+  if (typeof v !== "boolean") throw new SnapshotError(`${path}.${key}`, "불리언이 아닙니다.");
+  return v;
+}
+
 function int(obj: Record<string, unknown>, key: string, path: string, min = 0): number {
   const v = num(obj, key, path);
   if (!Number.isInteger(v) || v < min) throw new SnapshotError(`${path}.${key}`, `${min} 이상의 정수여야 합니다.`);
@@ -116,6 +122,7 @@ function parseEntity(raw: unknown, path: string): Entity {
     poiseRegenDelay: int(raw, "poiseRegenDelay", path),
     staggerTicks: int(raw, "staggerTicks", path),
     flags,
+    grounded: bool(raw, "grounded", path),
   };
 }
 
@@ -190,6 +197,9 @@ function parsePlayers(raw: unknown, entityIds: ReadonlySet<number>, attackIds: R
       actionYaw: num(r, "actionYaw", path),
       moveX: num(r, "moveX", path),
       moveZ: num(r, "moveZ", path),
+      moveMode: oneOf(r, "moveMode", path, ["velocity", "rootMotion"] as const),
+      rootDeltaX: num(r, "rootDeltaX", path),
+      rootDeltaZ: num(r, "rootDeltaZ", path),
     };
   });
 }

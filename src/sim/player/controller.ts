@@ -23,7 +23,7 @@ import { BUTTON, type InputFrame } from "../inputFrame";
 import { approachAngle, wrapAngle } from "../math/scalar";
 import { hasStaminaToAct, heal, setSprinting, tryPerform } from "../stats";
 import { SIM_DT } from "../time";
-import { inWindow } from "./timeline";
+import { inWindow, rootMotionDelta } from "./timeline";
 import { isActionState, type PlayerState, type PlayerStateId, type PlayerVerb } from "./types";
 
 export interface PlayerWorld extends CombatWorld {
@@ -88,6 +88,10 @@ class PlayerStep {
     this.e = e;
     this.frame = frame;
     readMove(frame);
+    // 이번 틱 이동 의도 초기화 — 루트 모션 행동이면 applyWindows가 다시 채운다
+    p.moveMode = "velocity";
+    p.rootDeltaX = 0;
+    p.rootDeltaZ = 0;
 
     // --- 강제 전이 ---
     if (isDead(e)) {
@@ -237,6 +241,12 @@ class PlayerStep {
     setFlag(e, FLAG.INVULNERABLE, inWindow(tl.iframes, t));
     setFlag(e, FLAG.SUPER_ARMOR, inWindow(tl.superArmor, t));
     if (p.attackInstance !== null) this.world.combat.setActive(p.attackInstance, inWindow(tl.hit, t));
+    if (tl.rootMotion) {
+      const d = rootMotionDelta(tl.rootMotion, t);
+      p.moveMode = "rootMotion";
+      p.rootDeltaX = Math.sin(p.actionYaw) * d;
+      p.rootDeltaZ = Math.cos(p.actionYaw) * d;
+    }
     if (tl.effect === t && p.action === "drink") {
       const amount = heal(e, e.maxHealth * PLAYER_ITEMS.flaskHealFraction);
       this.world.emit("heal", { entity: e.id, amount });
@@ -295,5 +305,8 @@ export function createPlayerState(entityId: number): PlayerState {
     actionYaw: 0,
     moveX: 0,
     moveZ: 0,
+    moveMode: "velocity",
+    rootDeltaX: 0,
+    rootDeltaZ: 0,
   };
 }

@@ -9,6 +9,7 @@
 import { PLAYER_TIMELINES, type PlayerActionId, type PlayerTimelineTable } from "../data/playerTimelines";
 import type { EntityId } from "../entity";
 import { copyInputFrame, createInputFrame, type InputFrame } from "../inputFrame";
+import { clearMovementIntent, type MovementIntent } from "../movement";
 import { createPlayerState, stepPlayer, type PlayerWorld } from "./controller";
 import type { ActionTimeline } from "./timeline";
 import type { PlayerState } from "./types";
@@ -73,6 +74,19 @@ export class PlayerSystem {
       stepPlayer(world, this.timelines, p, e, frame);
     }
     this.hasInput.clear();
+  }
+
+  /** 이 엔티티의 이번 틱 이동 의도를 out에 담는다. 플레이어가 아니면 false (out은 정지 의도로 초기화) */
+  intentOf(entityId: EntityId, out: MovementIntent): boolean {
+    clearMovementIntent(out);
+    const p = this.get(entityId);
+    if (!p) return false;
+    out.mode = p.moveMode;
+    out.velX = p.moveX;
+    out.velZ = p.moveZ;
+    out.dx = p.rootDeltaX;
+    out.dz = p.rootDeltaZ;
+    return true;
   }
 
   toState(): PlayerState[] {

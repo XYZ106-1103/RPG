@@ -77,6 +77,12 @@ describe("플레이어 타임라인 (PLAYER_TIMELINES)", () => {
       expect(Object.keys(ATTACKS)).toContain(id);
     }
     if (tl.effect !== undefined) expect(tl.effect).toBeLessThan(tl.length);
+    if (tl.rootMotion) {
+      expect(tl.rootMotion.distance).toBeGreaterThan(0);
+      expect(tl.rootMotion.start).toBeGreaterThanOrEqual(0);
+      expect(tl.rootMotion.end).toBeGreaterThan(tl.rootMotion.start);
+      expect(tl.rootMotion.end).toBeLessThanOrEqual(tl.length);
+    }
   });
 
   it("구르기/백스텝은 무적 구간이 있다", () => {

@@ -31,9 +31,14 @@ export interface PlayerState {
   flasks: number;
   /** 구르기/백스텝 이동 방향 (yaw) — 이동 시스템이 루트 모션을 이 방향으로 적용한다 */
   actionYaw: number;
-  /** 로코모션 목표 속도 (m/s, 월드 XZ) — 이동 시스템이 캐릭터 컨트롤러에 넘긴다 */
+  /** 로코모션 목표 속도 (m/s, 월드 XZ) — 이동 포트가 캐릭터 컨트롤러에 넘긴다 */
   moveX: number;
   moveZ: number;
+  /** 이번 틱 이동 모드: 행동 중 루트 모션이 있으면 rootMotion */
+  moveMode: "velocity" | "rootMotion";
+  /** 루트 모션 모드의 이번 틱 이동량 (m, 월드 XZ) */
+  rootDeltaX: number;
+  rootDeltaZ: number;
 }
 
 export function isActionState(s: PlayerStateId): boolean {

@@ -127,6 +127,7 @@ describe("sim 상태 역직렬화 검증", () => {
       [(e) => void (e.flags = 1 << 20), "$.entities[0].flags"],
       [(e) => void (e.staggerTicks = 1.5), "$.entities[0].staggerTicks"],
       [(e) => void (e.position = { x: 0, y: "1", z: 0 }), "$.entities[0].position.y"],
+      [(e) => void (e.grounded = "yes"), "$.entities[0].grounded"],
     ];
     for (const [mutate, path] of cases) {
       const data = bad((s) => {
@@ -162,6 +163,8 @@ describe("sim 상태 역직렬화 검증", () => {
       [(p) => void (p.entityId = 99), "$.players[0].entityId"],
       [(p) => void (p.attackInstance = 999), "$.players[0].attackInstance"],
       [(p) => void (p.stateTick = -1), "$.players[0].stateTick"],
+      [(p) => void (p.moveMode = "teleport"), "$.players[0].moveMode"],
+      [(p) => void (p.rootDeltaX = null), "$.players[0].rootDeltaX"],
     ];
     for (const [mutate, path] of cases) {
       const data = withPlayer();

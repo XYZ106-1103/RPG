@@ -12,10 +12,12 @@ import type { ArchetypeId } from "./data/archetypes";
 import { createEntity, type Entity, type EntityId, type Team } from "./entity";
 import type { EventSink, GameEventMap, SimEvent } from "./events";
 import type { ReadonlyVec3 } from "./math/vec3";
+import { FlatMovement, createMovementIntent, type MovementPort } from "./movement";
 import { PlayerSystem, type PlayerTimelineOverrides } from "./player/system";
 import type { PlayerState } from "./player/types";
 import { Rng } from "./rng";
 import { tickStats } from "./stats";
+import { SIM_DT } from "./time";
 
 export interface SimWorldOptions {
   /** 난수 시드 (u32). 기본 1 */
@@ -24,6 +26,8 @@ export interface SimWorldOptions {
   hitQuery?: HitQuery;
   /** 애니메이션 이벤트에서 읽은 플레이어 타임라인 (TimelineLoader 결과). 없는 행동은 기본값 */
   playerTimelines?: PlayerTimelineOverrides;
+  /** 이동 구현 (physics/가 캐릭터 컨트롤러를 주입). 기본: FlatMovement */
+  movement?: MovementPort;
 }
 
 /** 월드의 전체 상태 (직렬화 대상). 대기 중 이벤트는 일시적인 출력이므로 포함하지 않는다. */
@@ -48,11 +52,14 @@ export class SimWorld implements EventSink {
   readonly rng: Rng;
   readonly combat: CombatSystem;
   readonly players: PlayerSystem;
+  readonly movement: MovementPort;
+  private readonly intent = createMovementIntent();
 
   constructor(options: SimWorldOptions = {}) {
     this.rng = new Rng(options.seed ?? 1);
     this.combat = new CombatSystem(options.hitQuery);
     this.players = new PlayerSystem(options.playerTimelines);
+    this.movement = options.movement ?? new FlatMovement();
   }
 
   get tick(): number {
@@ -72,6 +79,7 @@ export class SimWorld implements EventSink {
     const e = createEntity(this.nextId++, archetype, team, position, yaw);
     this.list.push(e); // nextId가 단조 증가하므로 정렬이 유지된다
     this.byId.set(e.id, e);
+    this.movement.add(e);
     return e;
   }
 
@@ -89,17 +97,23 @@ export class SimWorld implements EventSink {
     this.list.splice(this.list.indexOf(e), 1);
     this.combat.endAllOf(id);
     this.players.remove(id);
+    this.movement.remove(id);
     return true;
   }
 
   /**
-   * 한 틱 진행 (60Hz 고정 스텝에서 호출): 스탯 → 플레이어 상태 머신 → 전투 판정.
-   * 상태 머신이 켠 i-frame/판정 구간이 같은 틱의 전투 판정에 반영되도록 이 순서를 지킨다.
+   * 한 틱 진행 (60Hz 고정 스텝에서 호출): 스탯 → 플레이어 상태 머신(의도) → 이동 → 전투 판정.
+   * - 상태 머신이 켠 i-frame/판정 구간이 같은 틱의 전투 판정에 반영된다.
+   * - 전투 판정은 이번 틱 이동이 끝난 위치로 한다.
    */
   step(): void {
     this.tickCount++;
     for (const e of this.list) tickStats(e);
     this.players.step(this);
+    for (const e of this.list) {
+      this.players.intentOf(e.id, this.intent); // 플레이어가 아니면 정지 의도 (중력은 이동 구현이 처리)
+      this.movement.move(e, this.intent, SIM_DT);
+    }
     this.combat.step(this);
   }
 
@@ -143,6 +157,7 @@ export class SimWorld implements EventSink {
     for (const e of sorted) {
       w.list.push(e);
       w.byId.set(e.id, e);
+      w.movement.add(e);
     }
     w.combat.loadState(state.combat);
     w.players.loadState(state.players);

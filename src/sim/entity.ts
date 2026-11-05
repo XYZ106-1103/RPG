@@ -61,6 +61,9 @@ export interface Entity {
 
   /** FLAG 비트마스크 */
   flags: number;
+
+  /** 발이 땅에 닿아 있는가 (이동 포트가 매 틱 갱신) */
+  grounded: boolean;
 }
 
 export function createEntity(id: EntityId, archetype: ArchetypeId, team: Team, position: ReadonlyVec3, yaw = 0): Entity {
@@ -81,6 +84,7 @@ export function createEntity(id: EntityId, archetype: ArchetypeId, team: Team, p
     poiseRegenDelay: 0,
     staggerTicks: 0,
     flags: 0,
+    grounded: true,
   };
 }
 
