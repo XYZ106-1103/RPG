@@ -77,6 +77,26 @@ export interface StaggerEvent {
   durationTicks: number;
 }
 
+export interface StateChangeEvent {
+  entity: EntityId;
+  from: string;
+  to: string;
+  /** 행동 상태면 행동 id (attack_light_2, roll 등) — 애니메이션 선택용 */
+  action: string | null;
+}
+
+export interface ActionRejectedEvent {
+  entity: EntityId;
+  action: string;
+  /** stamina: 스태미나 부족 / no_flask: 회복약 없음 */
+  reason: "stamina" | "no_flask";
+}
+
+export interface HealEvent {
+  entity: EntityId;
+  amount: number;
+}
+
 export interface GameEventMap {
   attack_start: AttackStartEvent;
   hit: HitEvent;
@@ -85,6 +105,11 @@ export interface GameEventMap {
   death: DeathEvent;
   /** 강인도 붕괴로 경직 시작 */
   stagger: StaggerEvent;
+  /** 행동 상태 전이 (애니메이션 상태 머신이 따라간다) */
+  state_change: StateChangeEvent;
+  /** 입력은 들어왔지만 실행하지 못한 행동 (UI: 스태미나 바 깜빡임 등) */
+  action_rejected: ActionRejectedEvent;
+  heal: HealEvent;
 }
 
 /** sim이 쌓아 두는 이벤트 레코드 (틱 번호 포함 — 리플레이/네트워크 순서 보장) */
