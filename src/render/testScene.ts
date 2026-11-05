@@ -18,14 +18,21 @@ const SKY_COLOR = new Color4(0.012, 0.014, 0.022, 1);
 
 const CAPSULE_HEIGHT = 1.8;
 const CAPSULE_RADIUS = 0.35;
+/** 등불 밝기. 끌 때는 setEnabled(false) 대신 intensity를 0으로 한다 — 재질이 freeze()되어 있으면
+ * 라이트 활성 상태 변화가 셰이더에 반영되지 않지만, intensity는 매 프레임 유니폼으로 전달된다. */
+export const LANTERN_INTENSITY = 6;
 
 export interface TestScene {
   scene: Scene;
+  /** 3인칭 시점 카메라 — 입력(look)으로 alpha/beta를, 캡슐 위치로 target을 직접 갱신한다 */
+  camera: ArcRotateCamera;
+  /** 등불 (켜고 끄기용) */
+  lantern: PointLight;
   /** 발밑 중앙이 원점인 캡슐 루트 — 위치/회전을 직접 갱신한다 (월드 행렬 동결 안 함) */
   capsule: Mesh;
 }
 
-export function createTestScene(engine: AbstractEngine, canvas: HTMLCanvasElement): TestScene {
+export function createTestScene(engine: AbstractEngine): TestScene {
   const scene = new Scene(engine);
   scene.clearColor = SKY_COLOR;
   // 환경맵(IBL)이 없으므로 앰비언트는 0 — 포인트 라이트(등불)만 광원
@@ -36,8 +43,8 @@ export function createTestScene(engine: AbstractEngine, canvas: HTMLCanvasElemen
   camera.upperRadiusLimit = 30;
   camera.upperBetaLimit = Math.PI / 2.05;
   camera.minZ = 0.05;
-  camera.wheelDeltaPercentage = 0.02;
-  camera.attachControl(canvas, true);
+  // 마우스 조작은 core/input(포인터 락)이 담당하므로 카메라 기본 조작은 붙이지 않는다
+  // TODO: gameplay/에 3인칭/락온 카메라가 생기면 대체한다
 
   // 바닥 평면 (TODO(에셋): 재의 평원 지형/텍스처로 교체)
   const ground = CreateGround("ground", { width: 40, height: 40 }, scene);
@@ -65,8 +72,8 @@ export function createTestScene(engine: AbstractEngine, canvas: HTMLCanvasElemen
   lantern.parent = capsule;
   lantern.diffuse = new Color3(1.0, 0.62, 0.3);
   lantern.specular = new Color3(1.0, 0.7, 0.4);
-  lantern.intensity = 6;
+  lantern.intensity = LANTERN_INTENSITY;
   lantern.range = 18;
 
-  return { scene, capsule };
+  return { scene, camera, lantern, capsule };
 }
