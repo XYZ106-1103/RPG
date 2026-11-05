@@ -1,0 +1,118 @@
+/**
+ * sim 월드: 엔티티 집합, 틱 카운터, 결정적 난수, 이벤트 큐.
+ *
+ * 결정성 규칙 (멀티플레이/리플레이):
+ *  - 엔티티는 항상 id 오름차순으로 처리한다.
+ *  - 난수는 world.rng만 쓴다 (Math.random 금지).
+ *  - 상태는 toState()/SimWorld.fromState()로 완전히 저장·복원된다 (직렬화는 serialize.ts).
+ */
+import type { ArchetypeId } from "./data/archetypes";
+import { createEntity, type Entity, type EntityId, type Team } from "./entity";
+import type { EventSink, GameEventMap, SimEvent } from "./events";
+import type { ReadonlyVec3 } from "./math/vec3";
+import { Rng } from "./rng";
+import { tickStats } from "./stats";
+
+export interface SimWorldOptions {
+  /** 난수 시드 (u32). 기본 1 */
+  seed?: number;
+}
+
+/** 월드의 전체 상태 (직렬화 대상). 대기 중 이벤트는 일시적인 출력이므로 포함하지 않는다. */
+export interface WorldState {
+  tick: number;
+  nextId: EntityId;
+  rngState: number;
+  /** id 오름차순 */
+  entities: Entity[];
+}
+
+export class SimWorld implements EventSink {
+  private tickCount = 0;
+  private nextId: EntityId = 1;
+  private readonly list: Entity[] = [];
+  private readonly byId = new Map<EntityId, Entity>();
+  private readonly pending: SimEvent[] = [];
+  readonly rng: Rng;
+
+  constructor(options: SimWorldOptions = {}) {
+    this.rng = new Rng(options.seed ?? 1);
+  }
+
+  get tick(): number {
+    return this.tickCount;
+  }
+
+  /** id 오름차순 엔티티 목록 (읽기 전용 — 추가/제거는 spawn/remove로) */
+  get entities(): readonly Entity[] {
+    return this.list;
+  }
+
+  get(id: EntityId): Entity | undefined {
+    return this.byId.get(id);
+  }
+
+  spawn(archetype: ArchetypeId, team: Team, position: ReadonlyVec3, yaw = 0): Entity {
+    const e = createEntity(this.nextId++, archetype, team, position, yaw);
+    this.list.push(e); // nextId가 단조 증가하므로 정렬이 유지된다
+    this.byId.set(e.id, e);
+    return e;
+  }
+
+  remove(id: EntityId): boolean {
+    const e = this.byId.get(id);
+    if (!e) return false;
+    this.byId.delete(id);
+    this.list.splice(this.list.indexOf(e), 1);
+    return true;
+  }
+
+  /** 한 틱 진행 (60Hz 고정 스텝에서 호출) */
+  step(): void {
+    this.tickCount++;
+    for (const e of this.list) tickStats(e);
+  }
+
+  emit<K extends keyof GameEventMap>(type: K, payload: GameEventMap[K]): void {
+    this.pending.push({ tick: this.tickCount, type, payload } as SimEvent);
+  }
+
+  /** 쌓인 이벤트를 out 배열 뒤에 붙이고 비운다 (out을 재사용하면 할당 없음) */
+  drainEvents(out: SimEvent[] = []): SimEvent[] {
+    for (const ev of this.pending) out.push(ev);
+    this.pending.length = 0;
+    return out;
+  }
+
+  get pendingEventCount(): number {
+    return this.pending.length;
+  }
+
+  /** 전체 상태의 깊은 복사본 */
+  toState(): WorldState {
+    return {
+      tick: this.tickCount,
+      nextId: this.nextId,
+      rngState: this.rng.getState(),
+      entities: this.list.map(cloneEntity),
+    };
+  }
+
+  /** 상태에서 월드를 복원한다. 입력 검증은 serialize.ts의 deserializeWorld가 담당한다. */
+  static fromState(state: Readonly<WorldState>): SimWorld {
+    const w = new SimWorld();
+    w.tickCount = state.tick;
+    w.nextId = state.nextId;
+    w.rng.setState(state.rngState);
+    const sorted = state.entities.map(cloneEntity).sort((a, b) => a.id - b.id);
+    for (const e of sorted) {
+      w.list.push(e);
+      w.byId.set(e.id, e);
+    }
+    return w;
+  }
+}
+
+export function cloneEntity(e: Readonly<Entity>): Entity {
+  return { ...e, position: { x: e.position.x, y: e.position.y, z: e.position.z } };
+}
