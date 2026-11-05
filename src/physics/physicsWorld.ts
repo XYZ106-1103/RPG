@@ -69,6 +69,19 @@ export function layerOfShape(shape: PhysicsShape | null): LayerName | null {
   return null;
 }
 
+/**
+ * Havok 네이티브 바디 id. Babylon이 공개 API로 노출하지 않아 _pluginData에서 읽는다
+ * (Babylon 자체 캐릭터 컨트롤러도 같은 방식). 형식이 바뀌면 null — tests/physics/가 감시한다.
+ */
+export function nativeBodyId(body: PhysicsBody): bigint | null {
+  const data: unknown = body._pluginData;
+  if (typeof data !== "object" || data === null || !("hpBodyId" in data)) return null;
+  const hp: unknown = data.hpBodyId;
+  if (!Array.isArray(hp)) return null;
+  const id: unknown = hp[0];
+  return typeof id === "bigint" ? id : null;
+}
+
 export class PhysicsWorld {
   readonly onTriggerEnter = new Observable<TriggerEvent>();
   readonly onTriggerExit = new Observable<TriggerEvent>();
@@ -76,6 +89,8 @@ export class PhysicsWorld {
   readonly onBodiesChanged = new Observable<void>();
 
   private readonly layers = new Map<PhysicsBody, LayerName>();
+  /** Havok 네이티브 바디 id → 바디 (네이티브 쿼리 결과를 바디로 되돌릴 때) */
+  private readonly byNativeId = new Map<bigint, PhysicsBody>();
 
   private constructor(
     readonly scene: Scene,
@@ -124,9 +139,40 @@ export class PhysicsWorld {
     if (motion === "dynamic") body.setMassProperties({ mass: options.mass ?? 1 });
     // animated 바디는 매 스텝 노드 위치를 따라간다 (게임 로직이 노드를 움직임)
     if (motion === "animated") body.disablePreStep = false;
-    this.layers.set(body, options.layer);
-    this.onBodiesChanged.notifyObservers();
+    this.track(body, options.layer);
     return body;
+  }
+
+  /** 래퍼 밖에서 만든 바디(캐릭터 컨트롤러 내부 바디 등)를 레이어와 함께 등록한다 */
+  registerExternalBody(body: PhysicsBody, layer: LayerName): void {
+    this.track(body, layer);
+  }
+
+  unregisterExternalBody(body: PhysicsBody): void {
+    this.untrack(body);
+  }
+
+  /** Havok 네이티브 바디 id로 바디를 찾는다 (등록된 바디만) */
+  bodyFromNativeId(id: bigint): PhysicsBody | undefined {
+    return this.byNativeId.get(id);
+  }
+
+  getGravity(out: Vector3): Vector3 {
+    return out.copyFrom(this.engine.gravity);
+  }
+
+  private track(body: PhysicsBody, layer: LayerName): void {
+    this.layers.set(body, layer);
+    const id = nativeBodyId(body);
+    if (id !== null) this.byNativeId.set(id, body);
+    this.onBodiesChanged.notifyObservers();
+  }
+
+  private untrack(body: PhysicsBody): void {
+    this.layers.delete(body);
+    const id = nativeBodyId(body);
+    if (id !== null) this.byNativeId.delete(id);
+    this.onBodiesChanged.notifyObservers();
   }
 
   /**
@@ -138,9 +184,8 @@ export class PhysicsWorld {
   }
 
   removeBody(body: PhysicsBody): void {
-    this.layers.delete(body);
+    this.untrack(body);
     body.dispose();
-    this.onBodiesChanged.notifyObservers();
   }
 
   /** 래퍼로 만든 바디는 등록된 레이어, 그 외(예: 캐릭터 컨트롤러 내부 바디)는 셰이프 마스크로 판별 */
@@ -162,6 +207,7 @@ export class PhysicsWorld {
     this.onTriggerExit.clear();
     this.onBodiesChanged.clear();
     this.layers.clear();
+    this.byNativeId.clear();
     this.scene.disablePhysicsEngine();
   }
 }
