@@ -45,14 +45,18 @@ public/assets/
 - 세계관상 태양이 꺼진 세계: 기본 조명은 어둡고, 플레이어의 등불(포인트 라이트)이 중요한 광원
 
 ## 물리 & 충돌
-충돌 레이어 (Havok 필터 마스크):
+충돌 레이어 (Havok 필터 마스크, 정의: `src/physics/layers.ts`):
 | 레이어 | 충돌 대상 |
 |---|---|
-| PLAYER | ENVIRONMENT, ENEMY, TRIGGER |
-| ENEMY | ENVIRONMENT, PLAYER, ENEMY |
-| ENVIRONMENT | 모두 |
+| PLAYER | ENVIRONMENT, ENEMY, TRIGGER, PROJECTILE |
+| ENEMY | ENVIRONMENT, PLAYER, ENEMY, PROJECTILE |
+| ENVIRONMENT | TRIGGER를 제외한 모두 |
 | TRIGGER | PLAYER (오버랩만) |
 | PROJECTILE | ENVIRONMENT, PLAYER, ENEMY |
+
+- Havok은 양쪽 마스크가 서로를 허용해야 충돌하므로 이 표는 반드시 대칭이어야 한다 (`tests/physics/layers.test.ts`가 검사).
+- 물리는 게임 루프 고정 스텝(60Hz)에서 `PhysicsWorld.step()`으로만 진행한다 (렌더 프레임 자동 진행은 끔).
+- F3: 충돌 셰이프 디버그 표시 (레이어별 색)
 
 - 플레이어/적: 캡슐 캐릭터 컨트롤러
 - 지형: 청크별 하이트필드 셰이프
