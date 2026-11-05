@@ -13,6 +13,14 @@ function busyWorld(): SimWorld {
   const d = w.spawn("hound", "enemy", { x: -6, y: 0, z: 9 });
   w.spawn("ash_knight", "enemy", { x: 100, y: 3, z: 100 }, -1.2);
   tryPerform(p, "backstep");
+  // 진행 중인 공격도 상태에 포함된다 (판정 활성 + 이미 맞은 대상)
+  const playerAttack = w.combat.start(w, p, "attack_light_1");
+  if (!playerAttack) throw new Error("attack failed");
+  w.combat.setActive(playerAttack.id, true);
+  playerAttack.hitList.add(3);
+  playerAttack.hitList.add(2);
+  const knight = w.get(4);
+  if (knight) w.combat.start(w, knight, "ash_knight_slam");
   setSprinting(p, true);
   applyHit(h, 12.5, 30, p.id, w);
   applyHit(d, 999, 0, p.id, w);

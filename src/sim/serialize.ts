@@ -5,11 +5,14 @@
  * 역직렬화한 월드를 같은 입력으로 진행하면 원본과 같은 결과가 나온다.
  * 외부(네트워크/파일)에서 온 데이터이므로 역직렬화 시 모든 필드를 검증한다.
  */
+import type { AttackInstanceState, CombatState } from "./combat/system";
 import { isArchetypeId } from "./data/archetypes";
+import { isAttackId } from "./data/attacks";
 import { ALL_FLAGS, TEAMS, type Entity, type Team } from "./entity";
-import { SimWorld, type WorldState } from "./world";
+import { SimWorld, type SimWorldOptions, type WorldState } from "./world";
 
-export const SNAPSHOT_VERSION = 1;
+/** 1: 엔티티만 / 2: 진행 중인 공격(combat) 추가 */
+export const SNAPSHOT_VERSION = 2;
 
 export interface WorldSnapshot extends WorldState {
   version: typeof SNAPSHOT_VERSION;
@@ -29,8 +32,8 @@ export function serializeWorld(world: SimWorld): WorldSnapshot {
   return { version: SNAPSHOT_VERSION, ...world.toState() };
 }
 
-export function deserializeWorld(data: unknown): SimWorld {
-  return SimWorld.fromState(parseSnapshot(data));
+export function deserializeWorld(data: unknown, options: Omit<SimWorldOptions, "seed"> = {}): SimWorld {
+  return SimWorld.fromState(parseSnapshot(data), options);
 }
 
 /** JSON 문자열로 */
@@ -38,14 +41,14 @@ export function encodeWorld(world: SimWorld): string {
   return JSON.stringify(serializeWorld(world));
 }
 
-export function decodeWorld(json: string): SimWorld {
+export function decodeWorld(json: string, options: Omit<SimWorldOptions, "seed"> = {}): SimWorld {
   let data: unknown;
   try {
     data = JSON.parse(json);
   } catch (err) {
     throw new SnapshotError("$", `JSON 파싱 실패: ${err instanceof Error ? err.message : String(err)}`);
   }
-  return deserializeWorld(data);
+  return deserializeWorld(data, options);
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +117,38 @@ function parseEntity(raw: unknown, path: string): Entity {
   };
 }
 
+function parseAttack(raw: unknown, path: string, entityIds: ReadonlySet<number>): AttackInstanceState {
+  if (!isRecord(raw)) throw new SnapshotError(path, "객체가 아닙니다.");
+  const attack = raw.attack;
+  if (typeof attack !== "string" || !isAttackId(attack)) throw new SnapshotError(`${path}.attack`, `알 수 없는 공격 '${String(attack)}'`);
+  if (typeof raw.active !== "boolean") throw new SnapshotError(`${path}.active`, "불리언이 아닙니다.");
+  const attackerId = int(raw, "attackerId", path, 1);
+  if (!entityIds.has(attackerId)) throw new SnapshotError(`${path}.attackerId`, `존재하지 않는 엔티티 ${attackerId}`);
+  if (!Array.isArray(raw.hitList)) throw new SnapshotError(`${path}.hitList`, "배열이 아닙니다.");
+  const hitList = raw.hitList.map((v: unknown, i: number) => {
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 1) throw new SnapshotError(`${path}.hitList[${i}]`, "1 이상의 정수가 아닙니다.");
+    return v;
+  });
+  return { id: int(raw, "id", path, 1), attackerId, attack, startTick: int(raw, "startTick", path), active: raw.active, hitList };
+}
+
+function parseCombat(raw: unknown, entityIds: ReadonlySet<number>): CombatState {
+  const path = "$.combat";
+  if (!isRecord(raw)) throw new SnapshotError(path, "객체가 아닙니다.");
+  const nextInstanceId = int(raw, "nextInstanceId", path, 1);
+  if (!Array.isArray(raw.attacks)) throw new SnapshotError(`${path}.attacks`, "배열이 아닙니다.");
+  const seen = new Set<number>();
+  const attacks = raw.attacks.map((a: unknown, i: number) => {
+    const p = `${path}.attacks[${i}]`;
+    const inst = parseAttack(a, p, entityIds);
+    if (seen.has(inst.id)) throw new SnapshotError(`${p}.id`, `중복 id ${inst.id}`);
+    if (inst.id >= nextInstanceId) throw new SnapshotError(`${p}.id`, `id ${inst.id}가 nextInstanceId ${nextInstanceId} 이상입니다.`);
+    seen.add(inst.id);
+    return inst;
+  });
+  return { nextInstanceId, attacks };
+}
+
 /** 알 수 없는 입력을 검증해 WorldState로 바꾼다. 실패하면 SnapshotError. */
 export function parseSnapshot(data: unknown): WorldState {
   if (!isRecord(data)) throw new SnapshotError("$", "객체가 아닙니다.");
@@ -134,5 +169,5 @@ export function parseSnapshot(data: unknown): WorldState {
     seen.add(e.id);
     return e;
   });
-  return { tick, nextId, rngState, entities };
+  return { tick, nextId, rngState, entities, combat: parseCombat(data.combat, seen) };
 }

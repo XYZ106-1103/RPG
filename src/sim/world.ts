@@ -6,6 +6,8 @@
  *  - 난수는 world.rng만 쓴다 (Math.random 금지).
  *  - 상태는 toState()/SimWorld.fromState()로 완전히 저장·복원된다 (직렬화는 serialize.ts).
  */
+import { CombatSystem, type CombatState } from "./combat/system";
+import type { HitQuery } from "./combat/types";
 import type { ArchetypeId } from "./data/archetypes";
 import { createEntity, type Entity, type EntityId, type Team } from "./entity";
 import type { EventSink, GameEventMap, SimEvent } from "./events";
@@ -16,6 +18,8 @@ import { tickStats } from "./stats";
 export interface SimWorldOptions {
   /** 난수 시드 (u32). 기본 1 */
   seed?: number;
+  /** 무기 판정 셰이프캐스트 구현 (physics/가 주입). 기본: 아무것도 맞지 않음 */
+  hitQuery?: HitQuery;
 }
 
 /** 월드의 전체 상태 (직렬화 대상). 대기 중 이벤트는 일시적인 출력이므로 포함하지 않는다. */
@@ -25,6 +29,8 @@ export interface WorldState {
   rngState: number;
   /** id 오름차순 */
   entities: Entity[];
+  /** 진행 중인 공격 */
+  combat: CombatState;
 }
 
 export class SimWorld implements EventSink {
@@ -34,9 +40,11 @@ export class SimWorld implements EventSink {
   private readonly byId = new Map<EntityId, Entity>();
   private readonly pending: SimEvent[] = [];
   readonly rng: Rng;
+  readonly combat: CombatSystem;
 
   constructor(options: SimWorldOptions = {}) {
     this.rng = new Rng(options.seed ?? 1);
+    this.combat = new CombatSystem(options.hitQuery);
   }
 
   get tick(): number {
@@ -64,13 +72,15 @@ export class SimWorld implements EventSink {
     if (!e) return false;
     this.byId.delete(id);
     this.list.splice(this.list.indexOf(e), 1);
+    this.combat.endAllOf(id);
     return true;
   }
 
-  /** 한 틱 진행 (60Hz 고정 스텝에서 호출) */
+  /** 한 틱 진행 (60Hz 고정 스텝에서 호출): 스탯 → 전투 판정 */
   step(): void {
     this.tickCount++;
     for (const e of this.list) tickStats(e);
+    this.combat.step(this);
   }
 
   emit<K extends keyof GameEventMap>(type: K, payload: GameEventMap[K]): void {
@@ -95,12 +105,16 @@ export class SimWorld implements EventSink {
       nextId: this.nextId,
       rngState: this.rng.getState(),
       entities: this.list.map(cloneEntity),
+      combat: this.combat.toState(),
     };
   }
 
-  /** 상태에서 월드를 복원한다. 입력 검증은 serialize.ts의 deserializeWorld가 담당한다. */
-  static fromState(state: Readonly<WorldState>): SimWorld {
-    const w = new SimWorld();
+  /**
+   * 상태에서 월드를 복원한다. 입력 검증은 serialize.ts의 deserializeWorld가 담당한다.
+   * hitQuery 같은 외부 구현은 상태가 아니므로 options로 다시 주입한다.
+   */
+  static fromState(state: Readonly<WorldState>, options: Omit<SimWorldOptions, "seed"> = {}): SimWorld {
+    const w = new SimWorld(options);
     w.tickCount = state.tick;
     w.nextId = state.nextId;
     w.rng.setState(state.rngState);
@@ -109,6 +123,7 @@ export class SimWorld implements EventSink {
       w.list.push(e);
       w.byId.set(e.id, e);
     }
+    w.combat.loadState(state.combat);
     return w;
   }
 }
