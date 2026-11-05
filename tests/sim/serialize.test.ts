@@ -149,6 +149,28 @@ describe("sim 상태 역직렬화 검증", () => {
     expect(() => deserializeWorld(bad((s) => void (s.nextId = 2)))).toThrowError(/nextId/);
   });
 
+  it("플레이어 상태 오류를 거부한다", () => {
+    const withPlayer = (): Record<string, unknown> & { players: Record<string, unknown>[] } => {
+      const w = busyWorld();
+      w.players.add(1);
+      return JSON.parse(encodeWorld(w)) as Record<string, unknown> & { players: Record<string, unknown>[] };
+    };
+    const cases: [(p: Record<string, unknown>) => void, string][] = [
+      [(p) => void (p.state = "flying"), "$.players[0].state"],
+      [(p) => void (p.action = "attack_light_9"), "$.players[0].action"],
+      [(p) => void (p.reserved = "jump"), "$.players[0].reserved"],
+      [(p) => void (p.entityId = 99), "$.players[0].entityId"],
+      [(p) => void (p.attackInstance = 999), "$.players[0].attackInstance"],
+      [(p) => void (p.stateTick = -1), "$.players[0].stateTick"],
+    ];
+    for (const [mutate, path] of cases) {
+      const data = withPlayer();
+      const first = data.players[0];
+      if (first) mutate(first);
+      expect(() => deserializeWorld(data), path).toThrowError(expect.objectContaining({ path }));
+    }
+  });
+
   it("깨진 JSON은 SnapshotError", () => {
     expect(() => decodeWorld("{not json")).toThrowError(SnapshotError);
   });

@@ -8,11 +8,13 @@
 import type { AttackInstanceState, CombatState } from "./combat/system";
 import { isArchetypeId } from "./data/archetypes";
 import { isAttackId } from "./data/attacks";
+import { PLAYER_ACTIONS, type PlayerActionId } from "./data/playerTimelines";
+import { PLAYER_STATES, PLAYER_VERBS, type PlayerState, type PlayerStateId, type PlayerVerb } from "./player/types";
 import { ALL_FLAGS, TEAMS, type Entity, type Team } from "./entity";
 import { SimWorld, type SimWorldOptions, type WorldState } from "./world";
 
-/** 1: 엔티티만 / 2: 진행 중인 공격(combat) 추가 */
-export const SNAPSHOT_VERSION = 2;
+/** 1: 엔티티만 / 2: 진행 중인 공격(combat) 추가 / 3: 플레이어 행동 상태 머신(players) 추가 */
+export const SNAPSHOT_VERSION = 3;
 
 export interface WorldSnapshot extends WorldState {
   version: typeof SNAPSHOT_VERSION;
@@ -149,6 +151,49 @@ function parseCombat(raw: unknown, entityIds: ReadonlySet<number>): CombatState 
   return { nextInstanceId, attacks };
 }
 
+function oneOf<T extends string>(obj: Record<string, unknown>, key: string, path: string, allowed: readonly T[]): T {
+  const v = obj[key];
+  if (typeof v !== "string" || !allowed.includes(v as T)) throw new SnapshotError(`${path}.${key}`, `허용되지 않는 값 '${String(v)}'`);
+  return v as T;
+}
+
+function oneOfOrNull<T extends string>(obj: Record<string, unknown>, key: string, path: string, allowed: readonly T[]): T | null {
+  return obj[key] === null ? null : oneOf(obj, key, path, allowed);
+}
+
+function parsePlayers(raw: unknown, entityIds: ReadonlySet<number>, attackIds: ReadonlySet<number>): PlayerState[] {
+  if (!Array.isArray(raw)) throw new SnapshotError("$.players", "배열이 아닙니다.");
+  const seen = new Set<number>();
+  return raw.map((r: unknown, i: number) => {
+    const path = `$.players[${i}]`;
+    if (!isRecord(r)) throw new SnapshotError(path, "객체가 아닙니다.");
+    const entityId = int(r, "entityId", path, 1);
+    if (!entityIds.has(entityId)) throw new SnapshotError(`${path}.entityId`, `존재하지 않는 엔티티 ${entityId}`);
+    if (seen.has(entityId)) throw new SnapshotError(`${path}.entityId`, `중복 플레이어 ${entityId}`);
+    seen.add(entityId);
+    const state: PlayerStateId = oneOf(r, "state", path, PLAYER_STATES);
+    const action: PlayerActionId | null = oneOfOrNull(r, "action", path, PLAYER_ACTIONS);
+    const reserved: PlayerVerb | null = oneOfOrNull(r, "reserved", path, PLAYER_VERBS);
+    let attackInstance: number | null = null;
+    if (r.attackInstance !== null) {
+      attackInstance = int(r, "attackInstance", path, 1);
+      if (!attackIds.has(attackInstance)) throw new SnapshotError(`${path}.attackInstance`, `존재하지 않는 공격 ${attackInstance}`);
+    }
+    return {
+      entityId,
+      state,
+      action,
+      stateTick: int(r, "stateTick", path),
+      reserved,
+      attackInstance,
+      flasks: int(r, "flasks", path),
+      actionYaw: num(r, "actionYaw", path),
+      moveX: num(r, "moveX", path),
+      moveZ: num(r, "moveZ", path),
+    };
+  });
+}
+
 /** 알 수 없는 입력을 검증해 WorldState로 바꾼다. 실패하면 SnapshotError. */
 export function parseSnapshot(data: unknown): WorldState {
   if (!isRecord(data)) throw new SnapshotError("$", "객체가 아닙니다.");
@@ -169,5 +214,7 @@ export function parseSnapshot(data: unknown): WorldState {
     seen.add(e.id);
     return e;
   });
-  return { tick, nextId, rngState, entities, combat: parseCombat(data.combat, seen) };
+  const combat = parseCombat(data.combat, seen);
+  const players = parsePlayers(data.players, seen, new Set(combat.attacks.map((a) => a.id)));
+  return { tick, nextId, rngState, entities, combat, players };
 }

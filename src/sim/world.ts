@@ -12,6 +12,8 @@ import type { ArchetypeId } from "./data/archetypes";
 import { createEntity, type Entity, type EntityId, type Team } from "./entity";
 import type { EventSink, GameEventMap, SimEvent } from "./events";
 import type { ReadonlyVec3 } from "./math/vec3";
+import { PlayerSystem, type PlayerTimelineOverrides } from "./player/system";
+import type { PlayerState } from "./player/types";
 import { Rng } from "./rng";
 import { tickStats } from "./stats";
 
@@ -20,6 +22,8 @@ export interface SimWorldOptions {
   seed?: number;
   /** 무기 판정 셰이프캐스트 구현 (physics/가 주입). 기본: 아무것도 맞지 않음 */
   hitQuery?: HitQuery;
+  /** 애니메이션 이벤트에서 읽은 플레이어 타임라인 (TimelineLoader 결과). 없는 행동은 기본값 */
+  playerTimelines?: PlayerTimelineOverrides;
 }
 
 /** 월드의 전체 상태 (직렬화 대상). 대기 중 이벤트는 일시적인 출력이므로 포함하지 않는다. */
@@ -31,6 +35,8 @@ export interface WorldState {
   entities: Entity[];
   /** 진행 중인 공격 */
   combat: CombatState;
+  /** 플레이어 행동 상태 머신 */
+  players: PlayerState[];
 }
 
 export class SimWorld implements EventSink {
@@ -41,10 +47,12 @@ export class SimWorld implements EventSink {
   private readonly pending: SimEvent[] = [];
   readonly rng: Rng;
   readonly combat: CombatSystem;
+  readonly players: PlayerSystem;
 
   constructor(options: SimWorldOptions = {}) {
     this.rng = new Rng(options.seed ?? 1);
     this.combat = new CombatSystem(options.hitQuery);
+    this.players = new PlayerSystem(options.playerTimelines);
   }
 
   get tick(): number {
@@ -67,19 +75,31 @@ export class SimWorld implements EventSink {
     return e;
   }
 
+  /** 플레이어 엔티티를 만들고 행동 상태 머신을 붙인다 */
+  spawnPlayer(position: ReadonlyVec3, yaw = 0): Entity {
+    const e = this.spawn("player", "player", position, yaw);
+    this.players.add(e.id);
+    return e;
+  }
+
   remove(id: EntityId): boolean {
     const e = this.byId.get(id);
     if (!e) return false;
     this.byId.delete(id);
     this.list.splice(this.list.indexOf(e), 1);
     this.combat.endAllOf(id);
+    this.players.remove(id);
     return true;
   }
 
-  /** 한 틱 진행 (60Hz 고정 스텝에서 호출): 스탯 → 전투 판정 */
+  /**
+   * 한 틱 진행 (60Hz 고정 스텝에서 호출): 스탯 → 플레이어 상태 머신 → 전투 판정.
+   * 상태 머신이 켠 i-frame/판정 구간이 같은 틱의 전투 판정에 반영되도록 이 순서를 지킨다.
+   */
   step(): void {
     this.tickCount++;
     for (const e of this.list) tickStats(e);
+    this.players.step(this);
     this.combat.step(this);
   }
 
@@ -106,6 +126,7 @@ export class SimWorld implements EventSink {
       rngState: this.rng.getState(),
       entities: this.list.map(cloneEntity),
       combat: this.combat.toState(),
+      players: this.players.toState(),
     };
   }
 
@@ -124,6 +145,7 @@ export class SimWorld implements EventSink {
       w.byId.set(e.id, e);
     }
     w.combat.loadState(state.combat);
+    w.players.loadState(state.players);
     return w;
   }
 }
