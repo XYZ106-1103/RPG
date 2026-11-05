@@ -17,10 +17,15 @@ export function hasStaminaToAct(e: Readonly<Entity>): boolean {
   return e.stamina >= STAMINA_RULES.minToAct;
 }
 
-/** 이 행동을 지금 시작할 수 있는가 (상태 + 스태미나) */
-export function canPerform(e: Readonly<Entity>, action: StaminaActionId): boolean {
+/** 소모량 cost인 행동을 지금 시작할 수 있는가 (상태 + 스태미나) */
+export function canAfford(e: Readonly<Entity>, cost: number): boolean {
   if (!isActionable(e)) return false;
-  return STAMINA_ACTIONS[action].cost <= 0 || hasStaminaToAct(e);
+  return cost <= 0 || hasStaminaToAct(e);
+}
+
+/** 테이블에 있는 행동을 지금 시작할 수 있는가 */
+export function canPerform(e: Readonly<Entity>, action: StaminaActionId): boolean {
+  return canAfford(e, STAMINA_ACTIONS[action].cost);
 }
 
 /**
@@ -42,9 +47,14 @@ export function spendStamina(e: Entity, amount: number, regenDelaySeconds: numbe
  * 불가능하면 상태를 바꾸지 않고 false.
  */
 export function tryPerform(e: Entity, action: StaminaActionId): boolean {
-  if (!canPerform(e, action)) return false;
   const c = STAMINA_ACTIONS[action];
-  spendStamina(e, c.cost, c.regenDelaySeconds);
+  return trySpend(e, c.cost, c.regenDelaySeconds);
+}
+
+/** 소모량을 직접 지정하는 버전 (공격처럼 행동별 소모량이 다른 경우). 불가능하면 상태를 바꾸지 않는다. */
+export function trySpend(e: Entity, cost: number, regenDelaySeconds: number): boolean {
+  if (!canAfford(e, cost)) return false;
+  spendStamina(e, cost, regenDelaySeconds);
   return true;
 }
 

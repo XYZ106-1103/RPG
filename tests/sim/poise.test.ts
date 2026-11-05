@@ -16,7 +16,7 @@ describe("강인도 — 누적 피해와 붕괴", () => {
     expect(applyPoiseDamage(e, 10, world)).toBe(true);
     expect(isStaggered(e)).toBe(true);
     expect(isActionable(e)).toBe(false);
-    expect(canPerform(e, "attack_light")).toBe(false);
+    expect(canPerform(e, "roll")).toBe(false);
   });
 
   it("붕괴하면 stagger 이벤트를 내고, 강인도를 최대로 되돌린다", () => {

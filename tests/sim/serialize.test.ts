@@ -12,7 +12,7 @@ function busyWorld(): SimWorld {
   const h = w.spawn("hollow", "enemy", { x: 4, y: 0, z: 2 }, Math.PI);
   const d = w.spawn("hound", "enemy", { x: -6, y: 0, z: 9 });
   w.spawn("ash_knight", "enemy", { x: 100, y: 3, z: 100 }, -1.2);
-  tryPerform(p, "attack_heavy");
+  tryPerform(p, "backstep");
   setSprinting(p, true);
   applyHit(h, 12.5, 30, p.id, w);
   applyHit(d, 999, 0, p.id, w);

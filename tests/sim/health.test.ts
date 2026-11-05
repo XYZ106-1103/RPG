@@ -44,7 +44,7 @@ describe("체력과 사망 처리", () => {
     stepN(world, 600);
     expect(e.stamina).toBe(stamina);
     expect(e.poise).toBe(poise);
-    expect(tryPerform(e, "attack_light")).toBe(false);
+    expect(tryPerform(e, "roll")).toBe(false);
   });
 
   it("치명타가 된 공격은 경직을 일으키지 않는다 (사망이 우선)", () => {

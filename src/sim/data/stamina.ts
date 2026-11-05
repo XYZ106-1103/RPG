@@ -1,6 +1,7 @@
 /**
  * 스태미나 소모 테이블과 공통 규칙. 밸런스 조정은 이 파일만 고치면 된다.
  * 행동 이름은 애니메이션 이름 규칙(CLAUDE.md)을 따른다.
+ * 공격의 스태미나 소모는 공격별로 다르므로 data/attacks.ts의 AttackDef에 있다 (한 곳에서만 관리).
  */
 
 export interface StaminaActionCost {
@@ -10,11 +11,8 @@ export interface StaminaActionCost {
   regenDelaySeconds: number;
 }
 
-/** 즉시 소모 행동 */
+/** 즉시 소모 행동 (공격 제외) */
 export const STAMINA_ACTIONS = {
-  attack_light: { cost: 18, regenDelaySeconds: 0.6 },
-  attack_heavy: { cost: 32, regenDelaySeconds: 0.9 },
-  attack_run: { cost: 24, regenDelaySeconds: 0.7 },
   roll: { cost: 20, regenDelaySeconds: 0.6 },
   backstep: { cost: 12, regenDelaySeconds: 0.5 },
   drink: { cost: 0, regenDelaySeconds: 0 },

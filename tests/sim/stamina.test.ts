@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ARCHETYPES } from "../../src/sim/data/archetypes";
 import { STAMINA_ACTIONS, STAMINA_RULES } from "../../src/sim/data/stamina";
 import { FLAG, hasFlag } from "../../src/sim/entity";
-import { breakPoise, canPerform, kill, setSprinting, spendStamina, tryPerform } from "../../src/sim/stats";
+import { breakPoise, canAfford, canPerform, kill, setSprinting, spendStamina, tryPerform, trySpend } from "../../src/sim/stats";
 import { SIM_DT, secondsToTicks } from "../../src/sim/time";
 import { stepN, worldWith } from "./helpers";
 
@@ -17,9 +17,9 @@ describe("스태미나 — 소모와 회복 지연", () => {
 
   it("회복 지연 동안은 회복하지 않고, 지연이 끝난 다음 틱부터 회복한다", () => {
     const { world, e } = worldWith();
-    tryPerform(e, "attack_light");
+    tryPerform(e, "roll");
     const after = e.stamina;
-    const delay = secondsToTicks(STAMINA_ACTIONS.attack_light.regenDelaySeconds);
+    const delay = secondsToTicks(STAMINA_ACTIONS.roll.regenDelaySeconds);
     expect(e.staminaRegenDelay).toBe(delay);
 
     stepN(world, delay);
@@ -32,9 +32,9 @@ describe("스태미나 — 소모와 회복 지연", () => {
 
   it("지연 후 초당 회복량대로 회복하고 최대치에서 멈춘다", () => {
     const { world, e } = worldWith();
-    tryPerform(e, "attack_heavy");
+    tryPerform(e, "backstep");
     const after = e.stamina;
-    stepN(world, secondsToTicks(STAMINA_ACTIONS.attack_heavy.regenDelaySeconds) + 60);
+    stepN(world, secondsToTicks(STAMINA_ACTIONS.backstep.regenDelaySeconds) + 60);
     expect(e.stamina).toBeCloseTo(Math.min(e.maxStamina, after + REGEN), 6);
     stepN(world, 600);
     expect(e.stamina).toBe(e.maxStamina);
@@ -42,10 +42,10 @@ describe("스태미나 — 소모와 회복 지연", () => {
 
   it("지연 중 다시 행동하면 지연이 다시 걸린다 (연타 중 회복 없음)", () => {
     const { world, e } = worldWith();
-    tryPerform(e, "attack_light");
+    tryPerform(e, "roll");
     stepN(world, 20);
-    tryPerform(e, "attack_light");
-    expect(e.staminaRegenDelay).toBe(secondsToTicks(STAMINA_ACTIONS.attack_light.regenDelaySeconds));
+    tryPerform(e, "roll");
+    expect(e.staminaRegenDelay).toBe(secondsToTicks(STAMINA_ACTIONS.roll.regenDelaySeconds));
     const after = e.stamina;
     stepN(world, 30);
     expect(e.stamina).toBe(after);
@@ -71,7 +71,7 @@ describe("스태미나 — 0일 때 행동 제한", () => {
   it("소모량보다 적게 남아도 0보다 크면 행동할 수 있고, 0에서 멈춘다 (음수 없음)", () => {
     const { e } = worldWith();
     e.stamina = 3;
-    expect(tryPerform(e, "attack_heavy")).toBe(true);
+    expect(tryPerform(e, "roll")).toBe(true);
     expect(e.stamina).toBe(0);
   });
 
@@ -79,10 +79,13 @@ describe("스태미나 — 0일 때 행동 제한", () => {
     const { e } = worldWith();
     e.stamina = 0;
     e.staminaRegenDelay = 7;
-    for (const a of ["attack_light", "attack_heavy", "attack_run", "roll", "backstep"] as const) {
+    for (const a of ["roll", "backstep"] as const) {
       expect(canPerform(e, a)).toBe(false);
       expect(tryPerform(e, a)).toBe(false);
     }
+    // 소모량을 직접 지정하는 경로(공격)도 같은 규칙
+    expect(canAfford(e, 18)).toBe(false);
+    expect(trySpend(e, 18, 0.6)).toBe(false);
     expect(e.staminaRegenDelay).toBe(7);
   });
 
@@ -107,7 +110,7 @@ describe("스태미나 — 0일 때 행동 제한", () => {
     expect(canPerform(e, "drink")).toBe(false);
     const { e: dead } = worldWith();
     kill(dead, null);
-    expect(tryPerform(dead, "attack_light")).toBe(false);
+    expect(tryPerform(dead, "roll")).toBe(false);
   });
 });
 
