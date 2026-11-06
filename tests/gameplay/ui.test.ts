@@ -56,3 +56,30 @@ describe("상태별 캡슐 색", () => {
     expect(colors.size).toBe(new Set(keys).size);
   });
 });
+
+import { assignKnown } from "../../src/ui/tuningGui";
+import { createFeelSettings } from "../../src/gameplay/feel/feelSettings";
+
+describe("수치 조정 저장값 복원", () => {
+  it("같은 키의 숫자/불리언만 덮어쓰고, 모르는 키·타입이 다른 값·NaN은 무시한다", () => {
+    const feel = createFeelSettings();
+    assignKnown(feel, {
+      hitstop: { scale: 2, enabled: false, unknown: 5, guardFrames: "3" },
+      shake: { light: { amplitude: 0.9, duration: Number.NaN } },
+      removedSection: { x: 1 },
+    });
+    expect(feel.hitstop.scale).toBe(2);
+    expect(feel.hitstop.enabled).toBe(false);
+    expect(feel.hitstop.guardFrames).toBe(createFeelSettings().hitstop.guardFrames);
+    expect(feel.shake.light.amplitude).toBe(0.9);
+    expect(feel.shake.light.duration).toBe(createFeelSettings().shake.light.duration);
+    expect("unknown" in feel.hitstop).toBe(false);
+  });
+
+  it("깨진 값(null, 문자열)이면 아무것도 바꾸지 않는다", () => {
+    const feel = createFeelSettings();
+    assignKnown(feel, null);
+    assignKnown(feel, "oops");
+    expect(feel).toEqual(createFeelSettings());
+  });
+});

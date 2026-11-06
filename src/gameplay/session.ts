@@ -92,7 +92,7 @@ export class GameSession {
   private readonly physicsDebug: PhysicsDebugView;
   private readonly sweepDebug: SweepDebugView;
   private readonly marker: LockOnMarker;
-  private readonly panel = new DebugPanel("top-right");
+  private readonly panel = new DebugPanel("top-left") // 오른쪽 위는 ?tune GUI 자리;
   private readonly fps = new FpsMeter();
   private readonly frame = createInputFrame();
   private readonly look = { x: 0, y: 0 };

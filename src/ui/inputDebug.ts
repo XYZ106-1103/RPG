@@ -1,5 +1,5 @@
 /**
- * 입력 디버그 오버레이 (개발용). 현재 InputFrame과 장치 상태를 화면 왼쪽 위에 보여준다.
+ * 입력 디버그 오버레이 (개발용, ?inputdebug). 현재 InputFrame과 장치 상태를 화면 왼쪽 아래에 보여준다.
  * 키 배치/게임패드 매핑을 브라우저에서 직접 확인하기 위한 도구.
  */
 import { BUTTON_ACTIONS, BUTTON, type InputFrame } from "../sim/inputFrame";
@@ -16,7 +16,7 @@ export class InputDebugOverlay {
     this.root = document.createElement("div");
     Object.assign(this.root.style, {
       position: "fixed",
-      top: "12px",
+      bottom: "12px",
       left: "12px",
       padding: "10px 12px",
       font: "12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",

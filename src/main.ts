@@ -11,6 +11,7 @@ import { InputDebugOverlay } from "./ui/inputDebug";
  *  - ?nointerp         보간을 끄고 현재 스텝 상태만 그린다 (비교용)
  *  - ?inputdebug       입력 디버그 오버레이 표시
  *  - ?physicsdebug     물리 디버그 뷰(충돌 셰이프 + 무기 궤적)를 켠 상태로 시작 (F3으로 토글)
+ *  - ?tune             타격감/카메라/락온/입력 수치 조정 GUI (lil-gui, 이때만 불러온다)
  */
 const params = new URLSearchParams(window.location.search);
 const SIM_HZ = Math.min(240, Math.max(1, Number(params.get("simhz")) || SIM_DEFAULT_HZ));
@@ -35,6 +36,20 @@ async function main(): Promise<void> {
     { stepSeconds: 1 / SIM_HZ },
   );
   loop.bindVisibility(document);
+
+  if (params.has("tune")) {
+    // 개발용 GUI는 별도 청크로 분리되어 ?tune일 때만 내려받는다
+    const { createTuningGui } = await import("./ui/tuningGui");
+    const inputSettings = input.getSettings();
+    createTuningGui({
+      feel: session.feel,
+      camera: session.camera.settings,
+      shake: session.camera.shake.settings,
+      lockOn: session.lockOn.controller.settings,
+      input: { mouseSensitivity: inputSettings.mouseSensitivity, gamepadLookSpeed: inputSettings.gamepadLookSpeed, invertY: inputSettings.invertY },
+      applyInput: (patch) => input.updateSettings(patch),
+    });
+  }
 
   console.info(`[loop] 시뮬레이션 ${SIM_HZ}Hz 고정 스텝`);
   // 입력 폴링(게임패드, 탭/홀드 타이머)은 고정 스텝보다 먼저 해야 같은 프레임의 sim 틱에 반영된다
