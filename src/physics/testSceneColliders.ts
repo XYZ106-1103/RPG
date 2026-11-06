@@ -4,25 +4,18 @@
  */
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
-import { CreateCapsule } from "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { PhysicsBody } from "@babylonjs/core/Physics/v2/physicsBody";
-import { PhysicsShapeBox, PhysicsShapeCapsule } from "@babylonjs/core/Physics/v2/physicsShape";
+import { PhysicsShapeBox } from "@babylonjs/core/Physics/v2/physicsShape";
 import type { Scene } from "@babylonjs/core/scene";
 import type { PhysicsWorld } from "./physicsWorld";
 import { createRamp, createStairs, createStaticBox } from "./testGeometry";
 
 export interface TestSceneColliders {
-  /** 플레이어 캡슐 충돌체 노드 — 고정 스텝에서 sim 위치로 옮긴다 (발밑 중앙 원점) */
-  playerCollider: TransformNode;
-  playerBody: PhysicsBody;
   triggerBody: PhysicsBody;
 }
-
-const PLAYER_HEIGHT = 1.8;
-const PLAYER_RADIUS = 0.35;
 
 function pbr(name: string, color: Color3, scene: Scene): PBRMaterial {
   const m = new PBRMaterial(name, scene);
@@ -33,29 +26,15 @@ function pbr(name: string, color: Color3, scene: Scene): PBRMaterial {
   return m;
 }
 
-/** 발밑 중앙이 원점인 캡슐 셰이프 */
-function footCapsule(height: number, radius: number, scene: Scene): PhysicsShapeCapsule {
-  return new PhysicsShapeCapsule(new Vector3(0, radius, 0), new Vector3(0, height - radius, 0), radius, scene);
-}
-
+/**
+ * 환경 충돌체 (바닥, 상자, 트리거, 이동 확인용 지형).
+ * 플레이어와 적은 sim 엔티티로 만들고, 캡슐 충돌은 캐릭터 컨트롤러(physics/character)가 담당한다.
+ */
 export function createTestSceneColliders(world: PhysicsWorld, scene: Scene): TestSceneColliders {
   // 바닥 (렌더용 평면은 testScene.ts) — 윗면이 y=0인 두꺼운 박스
   const ground = new TransformNode("groundCollider", scene);
   ground.position.y = -0.5;
   world.createBody(ground, { layer: "ENVIRONMENT", shape: new PhysicsShapeBox(Vector3.Zero(), Quaternion.Identity(), new Vector3(40, 1, 40), scene) });
-
-  // 플레이어
-  const playerCollider = new TransformNode("playerCollider", scene);
-  const playerBody = world.createBody(playerCollider, { layer: "PLAYER", shape: footCapsule(PLAYER_HEIGHT, PLAYER_RADIUS, scene), motion: "animated" });
-
-  // 허수아비 적 — TODO(에셋): 재의 망자 모델로 교체
-  const enemyHeight = 1.75;
-  const enemy = CreateCapsule("enemyDummy", { height: enemyHeight, radius: 0.38, tessellation: 16 }, scene);
-  enemy.bakeTransformIntoVertices(Matrix.Translation(0, enemyHeight / 2, 0));
-  enemy.position.set(3, 0, 4);
-  enemy.material = pbr("enemyMat", new Color3(0.35, 0.12, 0.1), scene);
-  enemy.freezeWorldMatrix();
-  world.createBody(enemy, { layer: "ENEMY", shape: footCapsule(enemyHeight, 0.38, scene) });
 
   // 환경 소품 상자 — TODO(에셋): 폐허 소품으로 교체
   const crate = CreateBox("crate", { size: 1 }, scene);
@@ -75,7 +54,7 @@ export function createTestSceneColliders(world: PhysicsWorld, scene: Scene): Tes
 
   createTraversalCourse(world, scene);
 
-  return { playerCollider, playerBody, triggerBody };
+  return { triggerBody };
 }
 
 const STONE = new Color3(0.32, 0.3, 0.28);
