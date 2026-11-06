@@ -1,6 +1,11 @@
 /**
  * 엔티티 하나의 표시: 캡슐(상태별 색) + 앞방향 표시용 작은 박스 + 무기 긴 박스.
  * 직전/현재 sim 틱 위치와 방향을 alpha로 보간한다.
+ *
+ * 타격감 연출 (모두 렌더 전용 — sim 상태는 건드리지 않는다):
+ *  - 히트스톱: 표시를 잠시 멈췄다가 실제 상태로 따라잡는다 (무기 휘두름도 함께 멈춤)
+ *  - 밀림: 맞은 방향으로 살짝 밀렸다 돌아온다
+ *  - 플래시: renderOverlay로 흰색을 덮는다 (freeze된 재질을 바꾸지 않음)
  * TODO(에셋): 캐릭터 GLB + 애니메이션 + 무기 모델로 교체
  */
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
@@ -16,6 +21,7 @@ import { ARCHETYPES } from "../../sim/data/archetypes";
 import { isDead, type Entity } from "../../sim/entity";
 import { vec3 } from "../../sim/math/vec3";
 import { cloneEntity } from "../../sim/world";
+import { HitstopTimer } from "../feel/hitstop";
 import { VIEW_COLORS, type ViewColorKey } from "./stateColors";
 
 const UP = new Vector3(0, 1, 0);
@@ -74,6 +80,15 @@ export class CharacterView {
   private readonly dir = new Vector3();
   private colorKey: ViewColorKey | null = null;
 
+  readonly hitstop = new HitstopTimer();
+  /** 정지 시작 시점의 표시 (따라잡기 시작점) */
+  private readonly held = { x: 0, y: 0, z: 0, yaw: 0, weaponTick: 0 };
+  private displayWeaponTick = 0;
+  private readonly push = { dx: 0, dz: 0, distance: 0, t: 0, duration: 0 };
+  private flashT = 0;
+  private flashDuration = 0;
+  private flashAlpha = 0;
+
   constructor(
     scene: Scene,
     private readonly materials: ViewMaterials,
@@ -89,6 +104,7 @@ export class CharacterView {
     this.weapon = CreateBox(`weapon${entity.id}`, { width: 0.05, height: WEAPON_LENGTH, depth: 0.02 }, scene);
     this.weapon.material = materials.weapon;
     this.weapon.rotationQuaternion = new Quaternion();
+    this.body.overlayColor = new Color3(1, 1, 1);
     this.display = cloneEntity(entity);
     this.capturePrevious(entity);
   }
@@ -101,17 +117,83 @@ export class CharacterView {
     this.prev.yaw = e.yaw;
   }
 
+  /** 히트스톱: 표시를 seconds 동안 멈춘 뒤 catchUpSeconds에 걸쳐 따라잡는다 */
+  freeze(seconds: number, catchUpSeconds: number): void {
+    this.hitstop.freeze(seconds, catchUpSeconds);
+  }
+
+  /** 피격 밀림: (dirX, dirZ) 방향으로 distance만큼 밀렸다가 seconds 동안 돌아온다 */
+  pushFrom(dirX: number, dirZ: number, distance: number, seconds: number): void {
+    const len = Math.hypot(dirX, dirZ);
+    if (len < 1e-6 || !(seconds > 0)) return;
+    this.push.dx = dirX / len;
+    this.push.dz = dirZ / len;
+    this.push.distance = distance;
+    this.push.t = 0;
+    this.push.duration = seconds;
+  }
+
+  /** 흰색 플래시 */
+  flash(seconds: number, alpha: number): void {
+    this.flashT = 0;
+    this.flashDuration = seconds;
+    this.flashAlpha = alpha;
+  }
+
   /**
-   * 렌더 프레임: 보간 → 메시 반영.
+   * 렌더 프레임: 보간 → 히트스톱/밀림/플래시 → 메시 반영.
    * @param weaponTick 무기 자세를 샘플링할 (소수) sim 틱
+   * @param dt 렌더 프레임 시간 (초)
    */
-  sync(e: Readonly<Entity>, alpha: number, color: ViewColorKey, attack: Readonly<AttackInstance> | null, weaponTick: number): void {
+  sync(e: Readonly<Entity>, alpha: number, color: ViewColorKey, attack: Readonly<AttackInstance> | null, weaponTick: number, dt = 0): void {
     const d = this.display;
-    d.position.x = this.prev.x + (e.position.x - this.prev.x) * alpha;
-    d.position.y = this.prev.y + (e.position.y - this.prev.y) * alpha;
-    d.position.z = this.prev.z + (e.position.z - this.prev.z) * alpha;
-    d.yaw = lerpAngle(this.prev.yaw, e.yaw, alpha);
-    this.apply(e, color, attack, weaponTick);
+    // 실제(보간된) 표시값
+    const lx = this.prev.x + (e.position.x - this.prev.x) * alpha;
+    const ly = this.prev.y + (e.position.y - this.prev.y) * alpha;
+    const lz = this.prev.z + (e.position.z - this.prev.z) * alpha;
+    const lyaw = lerpAngle(this.prev.yaw, e.yaw, alpha);
+
+    if (this.hitstop.consumeJustFroze()) {
+      this.held.x = d.position.x;
+      this.held.y = d.position.y;
+      this.held.z = d.position.z;
+      this.held.yaw = d.yaw;
+      this.held.weaponTick = this.displayWeaponTick;
+    }
+    const w = this.hitstop.advance(dt);
+    let wt = weaponTick;
+    if (w >= 1) {
+      d.position.x = lx;
+      d.position.y = ly;
+      d.position.z = lz;
+      d.yaw = lyaw;
+    } else {
+      // 정지(w=0)면 정지 시점 표시 그대로, 따라잡기 중이면 정지 시점 → 실제 보간
+      const h = this.held;
+      d.position.x = h.x + (lx - h.x) * w;
+      d.position.y = h.y + (ly - h.y) * w;
+      d.position.z = h.z + (lz - h.z) * w;
+      d.yaw = lerpAngle(h.yaw, lyaw, w);
+      wt = h.weaponTick + (weaponTick - h.weaponTick) * w;
+    }
+    this.displayWeaponTick = wt;
+
+    // 밀림/플래시는 정지가 풀린 뒤 진행 (맞은 순간 멈췄다가 튕겨 나가는 느낌)
+    if (w > 0) {
+      if (this.push.t < this.push.duration) this.push.t = Math.min(this.push.duration, this.push.t + dt);
+      if (this.flashT < this.flashDuration) this.flashT = Math.min(this.flashDuration, this.flashT + dt);
+    }
+    this.apply(e, color, attack, wt);
+
+    // 밀림 오프셋: 0 → 최대 → 0 (사인 반주기). display에는 넣지 않아 카메라/락온은 흔들리지 않는다
+    if (this.push.duration > 0 && this.push.t < this.push.duration) {
+      const k = Math.sin((Math.PI * this.push.t) / this.push.duration) * this.push.distance;
+      this.body.position.x += this.push.dx * k;
+      this.body.position.z += this.push.dz * k;
+    }
+    const flashing = this.flashDuration > 0 && this.flashT < this.flashDuration;
+    this.body.renderOverlay = flashing;
+    if (flashing) this.body.overlayAlpha = this.flashAlpha * (1 - this.flashT / this.flashDuration);
   }
 
   dispose(): void {

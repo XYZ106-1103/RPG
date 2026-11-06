@@ -32,6 +32,8 @@ import { LockOnMarker } from "../ui/lockOnMarker";
 import { LockOnSystem, type MarkerPosition } from "./camera/lockOnSystem";
 import { SpringArmProbe } from "./camera/springArmProbe";
 import { ThirdPersonCamera } from "./camera/thirdPersonCamera";
+import { createFeelSettings, type FeelSettings } from "./feel/feelSettings";
+import { HitFeedback } from "./feel/hitFeedback";
 import { CharacterView, ViewMaterials } from "./player/characterView";
 import { playerColorKey, type ViewColorKey } from "./player/stateColors";
 
@@ -82,6 +84,9 @@ export class GameSession {
   readonly events = new EventBus<GameEventMap>();
   readonly views = new Map<EntityId, CharacterView>();
   readonly hero: Entity;
+  /** 타격감 수치 (?tune GUI가 직접 바꾼다) */
+  readonly feel: FeelSettings = createFeelSettings();
+  readonly hitFeedback: HitFeedback;
   private readonly materials: ViewMaterials;
   private readonly dummies: Dummy[] = [];
   private readonly physicsDebug: PhysicsDebugView;
@@ -134,6 +139,10 @@ export class GameSession {
     });
 
     this.marker = new LockOnMarker(canvas);
+    this.hitFeedback = new HitFeedback(
+      { scene, events: this.events, viewOf: (id) => this.views.get(id), shake: camera.shake, heroId: hero.id },
+      this.feel,
+    );
   }
 
   static async create(engine: AbstractEngine, canvas: HTMLCanvasElement, input: InputManager, options: SessionOptions): Promise<GameSession> {
@@ -189,7 +198,7 @@ export class GameSession {
 
     const t = this.options.interpolate ? alpha : 1;
     const weaponTick = this.sim.tick - 1 + t;
-    for (const e of this.sim.entities) this.viewFor(e).sync(e, t, this.colorOf(e), this.attackOf(e.id), weaponTick);
+    for (const e of this.sim.entities) this.viewFor(e).sync(e, t, this.colorOf(e), this.attackOf(e.id), weaponTick, dt);
     this.cleanupViews();
 
     const heroView = this.viewFor(this.hero);
@@ -201,6 +210,7 @@ export class GameSession {
     this.lockOn.marker(this.markerPos);
     this.marker.update(this.markerPos.visible, this.markerPos.x, this.markerPos.y, engine.getRenderWidth(), engine.getRenderHeight());
     this.sweepDebug.update();
+    this.hitFeedback.update(dt);
     // freeze()된 재질에는 setEnabled 변화가 반영되지 않으므로 intensity로 끈다 (testScene.ts 참고)
     this.lantern.intensity = this.lanternOn ? LANTERN_INTENSITY : 0;
 
@@ -284,6 +294,7 @@ export class GameSession {
   }
 
   dispose(): void {
+    this.hitFeedback.dispose();
     this.panel.dispose();
     this.marker.dispose();
     this.sweepDebug.dispose();
