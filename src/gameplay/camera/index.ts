@@ -4,3 +4,5 @@ export * from "./shake";
 export * from "./springArm";
 export * from "./springArmProbe";
 export * from "./thirdPersonCamera";
+export * from "./lockOn";
+export * from "./lockOnSystem";
