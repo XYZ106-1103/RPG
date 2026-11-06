@@ -17,6 +17,11 @@ describe("데이터 테이블", () => {
     expect(a.name.length).toBeGreaterThan(0);
   });
 
+  it("연습용 허수아비 원형이 있고, 공격 데이터를 갖지 않는다", () => {
+    expect(ARCHETYPES.training_dummy.maxHealth).toBeGreaterThan(ARCHETYPES.hollow.maxHealth);
+    expect(Object.keys(ATTACKS).some((id) => id.startsWith("training_dummy"))).toBe(false);
+  });
+
   it.each(Object.entries(STAMINA_ACTIONS))("행동 %s 소모량이 유효하다", (_id, c) => {
     expect(c.cost).toBeGreaterThanOrEqual(0);
     expect(c.regenDelaySeconds).toBeGreaterThanOrEqual(0);

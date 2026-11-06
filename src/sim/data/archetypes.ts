@@ -71,6 +71,19 @@ export const ARCHETYPES = {
     radius: 0.85,
     height: 3.2,
   },
+  /** 연습용 허수아비: 공격/AI 없음, 맞기만 한다 (테스트 씬, 훈련장) */
+  training_dummy: {
+    name: "연습용 허수아비",
+    maxHealth: 200,
+    maxStamina: 100,
+    staminaRegenPerSecond: 40,
+    maxPoise: 40,
+    poiseRegenPerSecond: 15,
+    poiseRegenDelaySeconds: 3,
+    staggerSeconds: 1.2,
+    radius: 0.4,
+    height: 1.8,
+  },
 } as const satisfies Record<string, ArchetypeStats>;
 
 export type ArchetypeId = keyof typeof ARCHETYPES;
