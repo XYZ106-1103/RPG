@@ -225,7 +225,7 @@ export class ActionMapper {
    * sim 틱마다 호출: 현재 상태 + 직전 샘플 이후 래치된 눌림/뗌을 InputFrame에 담고 래치를 비운다.
    * 결과는 양자화되어 네트워크 왕복 값과 동일하다.
    */
-  sampleFrame(tick: number, viewYaw: number, out: InputFrame = createInputFrame()): InputFrame {
+  sampleFrame(tick: number, viewYaw: number, out: InputFrame = createInputFrame(), lockTarget = 0): InputFrame {
     this.getMove(this.tmp);
     out.tick = tick;
     out.moveX = this.tmp.x;
@@ -234,6 +234,7 @@ export class ActionMapper {
     out.held = this.held;
     out.pressed = this.pressedLatch;
     out.released = this.releasedLatch;
+    out.lockTarget = lockTarget;
     this.pressedLatch = 0;
     this.releasedLatch = 0;
     return quantizeInputFrame(out);

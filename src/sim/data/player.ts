@@ -14,6 +14,8 @@ export const PLAYER_MOVEMENT = {
   moveDeadzone: 0.2,
   /** 이동 중 회전 속도 (rad/s) */
   turnRate: 12,
+  /** 락온 유지 최대 거리 (m) — 클라이언트가 보낸 대상이 이보다 멀면 무시 */
+  lockOnRange: 25,
 } as const;
 
 export const PLAYER_ITEMS = {

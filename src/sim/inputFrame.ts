@@ -4,7 +4,7 @@
  * - 장치(키보드/마우스/게임패드)와 무관한 "액션" 단위로만 표현한다.
  * - 버튼은 비트마스크: held(현재 누르고 있음), pressed/released(직전 틱 이후 눌림/뗌 발생).
  *   틱 사이에 짧게 눌렀다 뗀 입력도 pressed로 남는다.
- * - 멀티플레이에서 그대로 서버로 보낼 수 있도록 14바이트 고정 크기로 직렬화한다.
+ * - 멀티플레이에서 그대로 서버로 보낼 수 있도록 18바이트 고정 크기로 직렬화한다.
  *   클라이언트도 quantizeInputFrame()을 거친 값으로 시뮬레이션해야 서버와 결과가 같다(결정성).
  *
  * look(카메라 회전)은 렌더 프레임 단위로 카메라가 직접 소비하고, sim에는 결과인 viewYaw만 넘긴다.
@@ -41,10 +41,15 @@ export interface InputFrame {
   pressed: number;
   /** 직전 틱 이후 뗌이 발생한 버튼 */
   released: number;
+  /**
+   * 락온 대상 엔티티 id (0 = 없음). 대상 선택은 클라이언트 카메라가 하고(화면 중앙/거리 기준),
+   * sim은 유효성(살아 있는 적, 거리 이내)만 확인해 그 대상을 바라본다.
+   */
+  lockTarget: number;
 }
 
 export function createInputFrame(): InputFrame {
-  return { tick: 0, moveX: 0, moveY: 0, viewYaw: 0, held: 0, pressed: 0, released: 0 };
+  return { tick: 0, moveX: 0, moveY: 0, viewYaw: 0, held: 0, pressed: 0, released: 0, lockTarget: 0 };
 }
 
 export function copyInputFrame(out: InputFrame, src: Readonly<InputFrame>): InputFrame {
@@ -55,6 +60,7 @@ export function copyInputFrame(out: InputFrame, src: Readonly<InputFrame>): Inpu
   out.held = src.held;
   out.pressed = src.pressed;
   out.released = src.released;
+  out.lockTarget = src.lockTarget;
   return out;
 }
 
@@ -74,7 +80,7 @@ export function wasReleased(frame: Readonly<InputFrame>, action: ButtonAction): 
 // 양자화 / 직렬화
 // ---------------------------------------------------------------------------
 
-export const INPUT_FRAME_BYTES = 14;
+export const INPUT_FRAME_BYTES = 18;
 
 const TAU = Math.PI * 2;
 const MOVE_SCALE = 127;
@@ -101,12 +107,13 @@ export function quantizeInputFrame(frame: InputFrame): InputFrame {
   frame.held &= BUTTON_MASK;
   frame.pressed &= BUTTON_MASK;
   frame.released &= BUTTON_MASK;
+  frame.lockTarget = Number.isFinite(frame.lockTarget) ? frame.lockTarget >>> 0 : 0;
   return frame;
 }
 
 /**
  * 레이아웃 (리틀 엔디언, 14바이트):
- *   u32 tick | i8 moveX | i8 moveY | u16 viewYaw | u16 held | u16 pressed | u16 released
+ *   u32 tick | i8 moveX | i8 moveY | u16 viewYaw | u16 held | u16 pressed | u16 released | u32 lockTarget
  */
 export function encodeInputFrame(frame: Readonly<InputFrame>, view: DataView, offset = 0): number {
   view.setUint32(offset, frame.tick >>> 0, true);
@@ -116,6 +123,7 @@ export function encodeInputFrame(frame: Readonly<InputFrame>, view: DataView, of
   view.setUint16(offset + 8, frame.held & BUTTON_MASK, true);
   view.setUint16(offset + 10, frame.pressed & BUTTON_MASK, true);
   view.setUint16(offset + 12, frame.released & BUTTON_MASK, true);
+  view.setUint32(offset + 14, Number.isFinite(frame.lockTarget) ? frame.lockTarget >>> 0 : 0, true);
   return offset + INPUT_FRAME_BYTES;
 }
 
@@ -127,5 +135,6 @@ export function decodeInputFrame(view: DataView, offset = 0, out: InputFrame = c
   out.held = view.getUint16(offset + 8, true);
   out.pressed = view.getUint16(offset + 10, true);
   out.released = view.getUint16(offset + 12, true);
+  out.lockTarget = view.getUint32(offset + 14, true);
   return out;
 }

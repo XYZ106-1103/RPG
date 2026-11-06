@@ -96,9 +96,9 @@ export class InputManager {
     return this.mapper.consumeLook(out);
   }
 
-  /** sim 틱마다 호출 */
-  sampleFrame(tick: number, viewYaw: number, out?: InputFrame): InputFrame {
-    return this.mapper.sampleFrame(tick, viewYaw, out);
+  /** sim 틱마다 호출. lockTarget은 카메라 락온이 고른 엔티티 id (0 = 없음) */
+  sampleFrame(tick: number, viewYaw: number, out?: InputFrame, lockTarget = 0): InputFrame {
+    return this.mapper.sampleFrame(tick, viewYaw, out, lockTarget);
   }
 
   dispose(): void {

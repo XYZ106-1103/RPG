@@ -53,6 +53,20 @@ export function pickVerb(frame: Readonly<InputFrame>): PlayerVerb | null {
   return null;
 }
 
+/** 락온 대상 방향 (유효한 대상이 없으면 NaN) */
+let lockYaw = Number.NaN;
+
+/** 클라이언트가 보낸 락온 대상이 유효한지 확인하고 그 방향(yaw)을 돌려준다 */
+function resolveLockYaw(world: PlayerWorld, self: Entity, targetId: number): number {
+  if (targetId <= 0 || targetId === self.id) return Number.NaN;
+  const t = world.get(targetId);
+  if (!t || isDead(t) || t.team === self.team) return Number.NaN;
+  const dx = t.position.x - self.position.x;
+  const dz = t.position.z - self.position.z;
+  if (dx * dx + dz * dz > PLAYER_MOVEMENT.lockOnRange * PLAYER_MOVEMENT.lockOnRange) return Number.NaN;
+  return Math.atan2(dx, dz);
+}
+
 /** 이동 입력을 월드 방향으로: 스틱 공간(x=오른쪽, y=앞)을 카메라 yaw만큼 회전 */
 interface WorldMove {
   x: number;
@@ -88,6 +102,7 @@ class PlayerStep {
     this.e = e;
     this.frame = frame;
     readMove(frame);
+    lockYaw = resolveLockYaw(world, e, frame.lockTarget);
     // 이번 틱 이동 의도 초기화 — 루트 모션 행동이면 applyWindows가 다시 채운다
     p.moveMode = "velocity";
     p.rootDeltaX = 0;
@@ -162,8 +177,10 @@ class PlayerStep {
       if (next === "guard") speed = PLAYER_MOVEMENT.guardSpeed;
       else if (next === "sprint") speed = PLAYER_MOVEMENT.sprintSpeed;
       else speed = move.magnitude < PLAYER_MOVEMENT.walkThreshold ? PLAYER_MOVEMENT.walkSpeed : PLAYER_MOVEMENT.runSpeed;
-      e.yaw = approachAngle(e.yaw, move.yaw, PLAYER_MOVEMENT.turnRate * SIM_DT);
     }
+    // 락온 중에는 대상을 바라보며 옆걸음 (질주는 예외: 달리는 방향을 본다). 그 외에는 이동 방향을 본다
+    const faceYaw = !Number.isNaN(lockYaw) && next !== "sprint" ? lockYaw : moving ? move.yaw : Number.NaN;
+    if (!Number.isNaN(faceYaw)) e.yaw = approachAngle(e.yaw, faceYaw, PLAYER_MOVEMENT.turnRate * SIM_DT);
     const len = Math.hypot(move.x, move.z);
     p.moveX = moving && len > 0 ? (move.x / len) * speed : 0;
     p.moveZ = moving && len > 0 ? (move.z / len) * speed : 0;
@@ -206,7 +223,9 @@ class PlayerStep {
     // 진행 중인 공격(콤보 이전 타)은 combat.start가 끝낸다
     const inst = this.world.combat.start(this.world, this.e, id);
     if (!inst) return this.reject(id, "stamina");
-    if (moving) this.e.yaw = move.yaw; // 공격 방향은 입력 방향으로 즉시 전환
+    // 공격 방향: 락온 대상 > 이동 입력 > 현재 방향 (즉시 전환)
+    if (!Number.isNaN(lockYaw)) this.e.yaw = lockYaw;
+    else if (moving) this.e.yaw = move.yaw;
     this.enterAction(id, inst.id);
     return true;
   }

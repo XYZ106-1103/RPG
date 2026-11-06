@@ -259,6 +259,12 @@ describe("ActionMapper — 게임패드 (표준 매핑, 소울라이크 배치)"
 });
 
 describe("ActionMapper — 스냅샷/포커스", () => {
+  it("sampleFrame은 락온 대상 id를 담는다 (기본 0)", () => {
+    const m = mapper();
+    expect(m.sampleFrame(1, 0).lockTarget).toBe(0);
+    expect(m.sampleFrame(2, 0, undefined, 7).lockTarget).toBe(7);
+  });
+
   it("sampleFrame은 tick/viewYaw를 담고 양자화된 값을 낸다", () => {
     const m = mapper();
     m.setGamepad(makePad({ axes: [0.3333, 0, 0, 0] }), 0);

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { HitCandidate, HitQuery, SweepRequest } from "../../src/sim/combat/types";
 import { ATTACKS } from "../../src/sim/data/attacks";
-import { PLAYER_ITEMS } from "../../src/sim/data/player";
+import { PLAYER_ITEMS, PLAYER_MOVEMENT } from "../../src/sim/data/player";
 import { PLAYER_TIMELINES } from "../../src/sim/data/playerTimelines";
 import { STAMINA_ACTIONS } from "../../src/sim/data/stamina";
 import { FLAG, hasFlag, type Entity, type EntityId } from "../../src/sim/entity";
@@ -41,6 +41,7 @@ interface FrameOpts {
   hold?: (keyof typeof BUTTON)[];
   move?: [number, number];
   viewYaw?: number;
+  lock?: number;
 }
 
 function frame(o: FrameOpts = {}): InputFrame {
@@ -51,6 +52,7 @@ function frame(o: FrameOpts = {}): InputFrame {
   f.moveX = o.move?.[0] ?? 0;
   f.moveY = o.move?.[1] ?? 0;
   f.viewYaw = o.viewYaw ?? 0;
+  f.lockTarget = o.lock ?? 0;
   return f;
 }
 
@@ -403,6 +405,57 @@ describe("이동/가드/강제 전이", () => {
     idle(10);
     expect(ps.state).toBe("death");
     expect(ps.moveZ).toBe(0);
+  });
+});
+
+describe("락온 (InputFrame.lockTarget)", () => {
+  const yawTo = (t: Entity) => Math.atan2(t.position.x - hero.position.x, t.position.z - hero.position.z);
+
+  it("락온 중 이동하면 대상을 바라보며 옆걸음한다", () => {
+    const foe = world.spawn("hollow", "enemy", { x: 5, y: 0, z: 0 }, 0); // 오른쪽(+X)
+    for (let i = 0; i < 40; i++) tick({ move: [0, 1], lock: foe.id }); // 앞(+Z)으로 이동
+    expect(ps.state).toBe("move");
+    expect(Math.abs(hero.yaw - yawTo(foe))).toBeLessThan(0.05); // 몸은 대상 쪽
+    expect(hero.position.z).toBeGreaterThan(1); // 이동은 입력 방향
+  });
+
+  it("락온 없이는 이동 방향을 바라본다", () => {
+    for (let i = 0; i < 40; i++) tick({ move: [1, 0] });
+    expect(hero.yaw).toBeCloseTo(Math.PI / 2, 2);
+  });
+
+  it("질주 중에는 락온 대상 대신 달리는 방향을 본다", () => {
+    const foe = world.spawn("hollow", "enemy", { x: 5, y: 0, z: 0 }, 0);
+    for (let i = 0; i < 40; i++) tick({ move: [0, 1], hold: ["sprint"], lock: foe.id });
+    expect(ps.state).toBe("sprint");
+    expect(hero.yaw).toBeCloseTo(0, 2);
+  });
+
+  it("공격은 락온 대상 방향으로 즉시 돌아서 시작한다 (입력 방향보다 우선)", () => {
+    const foe = world.spawn("hollow", "enemy", { x: -4, y: 0, z: -4 }, 0);
+    tick({ press: ["attack_light"], move: [1, 0], lock: foe.id });
+    expect(ps.action).toBe("attack_light_1");
+    expect(hero.yaw).toBeCloseTo(yawTo(foe), 9);
+  });
+
+  it("구르기는 락온 중에도 입력 방향으로 간다", () => {
+    const foe = world.spawn("hollow", "enemy", { x: 0, y: 0, z: 5 }, 0);
+    tick({ press: ["roll"], move: [1, 0], lock: foe.id });
+    expect(ps.state).toBe("roll");
+    expect(ps.actionYaw).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it("유효하지 않은 대상(없음, 죽음, 아군, 너무 멂, 자기 자신)은 무시한다", () => {
+    const dead = world.spawn("hollow", "enemy", { x: 3, y: 0, z: 0 }, 0);
+    kill(dead, null);
+    const ally = world.spawn("player", "player", { x: 3, y: 0, z: 0 }, 0);
+    const far = world.spawn("hollow", "enemy", { x: PLAYER_MOVEMENT.lockOnRange + 1, y: 0, z: 0 }, 0);
+    for (const id of [9999, dead.id, ally.id, far.id, hero.id]) {
+      hero.yaw = 0;
+      tick({ press: ["attack_light"], lock: id });
+      expect(hero.yaw, `target ${id}`).toBe(0);
+      idle(TL.attack_light_1.length);
+    }
   });
 });
 

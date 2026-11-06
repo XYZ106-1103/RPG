@@ -35,7 +35,16 @@ describe("InputFrame", () => {
     expect(wasReleased(f, "sprint")).toBe(true);
   });
 
-  it("인코딩은 고정 14바이트이고 디코딩하면 양자화된 값과 정확히 같다", () => {
+  it("락온 대상 id는 u32로 그대로 왕복한다 (0 = 없음)", () => {
+    const view = new DataView(new ArrayBuffer(INPUT_FRAME_BYTES));
+    encodeInputFrame(frame({ lockTarget: 123456789 }), view);
+    expect(decodeInputFrame(view).lockTarget).toBe(123456789);
+    encodeInputFrame(frame({ lockTarget: Number.NaN }), view);
+    expect(decodeInputFrame(view).lockTarget).toBe(0);
+    expect(quantizeInputFrame(frame({ lockTarget: -1 })).lockTarget).toBe(0xffffffff);
+  });
+
+  it("인코딩은 고정 18바이트이고 디코딩하면 양자화된 값과 정확히 같다", () => {
     const src = frame({
       tick: 123456,
       moveX: 0.7071,
@@ -44,6 +53,7 @@ describe("InputFrame", () => {
       held: BUTTON.guard | BUTTON.sprint,
       pressed: BUTTON.attack_light,
       released: BUTTON.roll,
+      lockTarget: 42,
     });
     const view = new DataView(new ArrayBuffer(INPUT_FRAME_BYTES * 2));
     expect(encodeInputFrame(src, view, INPUT_FRAME_BYTES)).toBe(INPUT_FRAME_BYTES * 2);
