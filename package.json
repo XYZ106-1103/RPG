@@ -18,7 +18,8 @@
     "assets:ambientcg": "node tools/fetch_ambientcg.mjs",
     "assets:orm": "node tools/pack_orm.mjs",
     "assets:optimize": "node tools/optimize.mjs",
-    "prepare": "node tools/setup_hooks.mjs"
+    "prepare": "node tools/setup_hooks.mjs",
+    "test:py": "python3 -m unittest discover -s tests/blender"
   },
   "repository": {
     "type": "git",

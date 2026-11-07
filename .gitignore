@@ -6,3 +6,4 @@ coverage/
 .vite/
 # 원본 에셋의 임시 작업물
 raw/**/_tmp/
+__pycache__/

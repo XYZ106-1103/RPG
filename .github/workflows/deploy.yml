@@ -33,6 +33,7 @@ jobs:
       - run: npm run lint
       - run: npm run check:credits
       - run: npm test
+      - run: npm run test:py # tools/blender 공용 로직 (블렌더 불필요)
       - run: npx vite build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
