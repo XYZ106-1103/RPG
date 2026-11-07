@@ -29,6 +29,7 @@ import { DebugPanel, textBar } from "../ui/debugPanel";
 import { FpsMeter } from "../ui/fpsMeter";
 import type { InputDebugOverlay } from "../ui/inputDebug";
 import { LockOnMarker } from "../ui/lockOnMarker";
+import { PointerLockHint } from "../ui/pointerLockHint";
 import { LockOnSystem, type MarkerPosition } from "./camera/lockOnSystem";
 import { SpringArmProbe } from "./camera/springArmProbe";
 import { ThirdPersonCamera } from "./camera/thirdPersonCamera";
@@ -92,6 +93,7 @@ export class GameSession {
   private readonly physicsDebug: PhysicsDebugView;
   private readonly sweepDebug: SweepDebugView;
   private readonly marker: LockOnMarker;
+  private readonly lockHint = new PointerLockHint();
   private readonly panel = new DebugPanel("top-left") // 오른쪽 위는 ?tune GUI 자리;
   private readonly fps = new FpsMeter();
   private readonly frame = createInputFrame();
@@ -215,6 +217,7 @@ export class GameSession {
     this.lantern.intensity = this.lanternOn ? LANTERN_INTENSITY : 0;
 
     this.updatePanel();
+    this.lockHint.update({ pointerLocked: this.input.isPointerLocked, failed: this.input.pointerLockFailed, usingGamepad: this.input.activeDevice === "gamepad" });
     this.options.inputDebug?.update(
       this.frame,
       { device: this.input.activeDevice, pointerLocked: this.input.isPointerLocked, gamepad: this.input.gamepadConnected, lanternOn: this.lanternOn },
@@ -287,7 +290,7 @@ export class GameSession {
       `락온     ${lockEntity ? `#${lockEntity.id} ${lockEntity.archetype} (${lockEntity.health.toFixed(0)})` : "-"}${!lockEntity && release ? `  해제: ${release}` : ""}`,
       `접지     ${this.characters.get(h.id)?.groundState ?? "-"}  트리거 ${this.inTrigger ? "안" : "밖"}`,
       `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}`,
-      `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}`,
+      `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}  카메라 ${((this.camera.viewYaw * 180) / Math.PI).toFixed(0)}°`,
       "",
       ...this.eventLog,
     ]);
@@ -297,6 +300,7 @@ export class GameSession {
     this.hitFeedback.dispose();
     this.panel.dispose();
     this.marker.dispose();
+    this.lockHint.dispose();
     this.sweepDebug.dispose();
     this.physicsDebug.dispose();
   }
