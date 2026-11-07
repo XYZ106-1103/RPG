@@ -17,7 +17,8 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "useDefineForClassFields": true
+    "useDefineForClassFields": true,
+    "allowJs": true
   },
   "include": ["src", "tests", "vite.config.ts"]
 }

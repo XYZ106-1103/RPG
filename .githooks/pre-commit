@@ -1,0 +1,4 @@
+#!/bin/sh
+# credits.json에 기록 없는 에셋이 public/assets/에 있으면 커밋을 막는다 (CLAUDE.md 에셋 규칙).
+# npm install 시 prepare 스크립트가 git config core.hooksPath .githooks 를 설정한다.
+exec node tools/check_credits.mjs --staged

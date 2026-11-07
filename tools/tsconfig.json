@@ -1,0 +1,12 @@
+{
+  // tools/*.mjs 타입 검사 (JSDoc + // @ts-check). npm run typecheck가 함께 돌린다.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["./**/*.mjs"],
+  "exclude": ["./e2e/**"]
+}

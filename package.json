@@ -8,11 +8,13 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tools --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e:input": "node tools/e2e/input-smoke.mjs"
+    "e2e:input": "node tools/e2e/input-smoke.mjs",
+    "check:credits": "node tools/check_credits.mjs",
+    "prepare": "node tools/setup_hooks.mjs"
   },
   "repository": {
     "type": "git",

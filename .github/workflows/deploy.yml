@@ -31,6 +31,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm run check:credits
       - run: npm test
       - run: npx vite build
       - uses: actions/configure-pages@v5
