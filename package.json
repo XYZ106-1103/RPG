@@ -21,7 +21,8 @@
     "prepare": "node tools/setup_hooks.mjs",
     "test:py": "python3 -m unittest discover -s tests/blender",
     "blender:cleanup": "node tools/blender/run.mjs cleanup",
-    "blender:merge": "node tools/blender/run.mjs merge"
+    "blender:merge": "node tools/blender/run.mjs merge",
+    "blender:selftest": "node tools/blender/run.mjs selftest"
   },
   "repository": {
     "type": "git",
