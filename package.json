@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "e2e:input": "node tools/e2e/input-smoke.mjs",
     "check:credits": "node tools/check_credits.mjs",
-    "prepare": "node tools/setup_hooks.mjs"
+    "prepare": "node tools/setup_hooks.mjs",
+    "assets:polyhaven": "node tools/fetch_polyhaven.mjs",
+    "assets:ambientcg": "node tools/fetch_ambientcg.mjs"
   },
   "repository": {
     "type": "git",
@@ -31,6 +33,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
     "eslint": "^10.14.0",
+    "fflate": "^0.8.3",
     "globals": "^17.14.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.1",
