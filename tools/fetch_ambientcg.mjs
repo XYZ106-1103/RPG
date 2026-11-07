@@ -4,13 +4,14 @@
  * ambientCG 재질 다운로드 (기본 2K JPG) → 필요한 맵만 raw/textures/<ID>/에 풀기 → credits.json 자동 추가.
  *
  * 사용:
- *   node tools/fetch_ambientcg.mjs <에셋ID> [--attr 2K-JPG] [--dry-run]
+ *   node tools/fetch_ambientcg.mjs <에셋ID> [--name 재질명] [--attr 2K-JPG] [--dry-run]
  * 예:
  *   node tools/fetch_ambientcg.mjs Ground054
  *
  * 꺼내는 맵: Color, NormalGL(OpenGL 노멀), Roughness, AmbientOcclusion, Metalness, Displacement, Opacity
  * (NormalDX, 미리보기, 재질 정의 파일은 버린다)
- * credits: "textures/<ID>/*" (최적화 결과물을 둘 위치)
+ * --name: 게임에서 쓸 재질 이름 (저장 폴더와 credits 패턴, 생략하면 에셋 ID)
+ * credits: "textures/<이름>/*" (최적화 결과물을 둘 위치)
  * 허용 목록에 막히면 멈추고 추가할 도메인을 알려 준다 (종료 코드 3).
  */
 import { mkdir, writeFile } from "node:fs/promises";
@@ -26,13 +27,18 @@ const { values, positionals } = parseArgs({
   options: {
     attr: { type: "string", default: DEFAULT_ATTRIBUTE },
     out: { type: "string" },
+    name: { type: "string" },
     "dry-run": { type: "boolean", default: false },
   },
 });
 
 const id = positionals[0];
 if (!id || !/^[a-z0-9_-]+$/i.test(id)) {
-  console.error("사용: node tools/fetch_ambientcg.mjs <에셋ID> [--attr 2K-JPG] [--dry-run]");
+  console.error("사용: node tools/fetch_ambientcg.mjs <에셋ID> [--name 재질명] [--attr 2K-JPG] [--dry-run]");
+  process.exit(2);
+}
+if (values.name !== undefined && !/^[a-z0-9_]+$/i.test(values.name)) {
+  console.error(`--name은 영문/숫자/밑줄만 쓸 수 있습니다: ${values.name}`);
   process.exit(2);
 }
 
@@ -40,7 +46,8 @@ try {
   const json = await fetchJson(`${AMBIENTCG_API}?id=${encodeURIComponent(id)}&include=downloadData`);
   const asset = parseAsset(json, id);
   const dl = pickDownload(asset, values.attr);
-  const outDir = values.out ?? `raw/textures/${asset.assetId}`;
+  const assetName = values.name ?? asset.assetId;
+  const outDir = values.out ?? `raw/textures/${assetName}`;
   console.log(`ambientCG: ${asset.displayName} (${dl.attribute}) → ${outDir}/  [zip ${formatBytes(dl.size)}]`);
   if (values["dry-run"]) {
     console.log(`  - ${dl.url}\n(--dry-run: 내려받지 않음)`);
@@ -62,10 +69,11 @@ try {
   }
   if (!names.some((n) => mapOfEntry(n) === "NormalGL")) console.warn("⚠ NormalGL 맵이 없습니다.");
 
-  const credit = creditFor(asset);
+  const credit = creditFor(asset, assetName);
   const result = await upsertCredit(credit);
   console.log(`credits.json ${result === "added" ? "추가" : "갱신"}: ${credit.file} — ${credit.author} (${credit.license})`);
-  console.log(`다음: node tools/pack_orm.mjs --dir ${outDir} --out public/assets/textures/${asset.assetId}/${asset.assetId}_orm.png`);
+  console.log(`다음: node tools/pack_orm.mjs --dir ${outDir} --out ${outDir}/${assetName}_orm.png`);
+  console.log(`      node tools/texture_ktx2.mjs ${outDir} public/assets/textures/${assetName} --name ${assetName}`);
 } catch (err) {
   exitWithError(err);
 }

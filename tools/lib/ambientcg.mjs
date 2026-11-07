@@ -84,11 +84,12 @@ export function mapOfEntry(entryName) {
 
 /**
  * @param {AmbientAsset} asset
+ * @param {string} [name] 게임 안 재질 이름 (기본: 에셋 ID). 최종 위치 패턴에 쓴다
  * @returns {import("./credits.mjs").CreditEntry}
  */
-export function creditFor(asset) {
+export function creditFor(asset, name = asset.assetId) {
   return {
-    file: `textures/${asset.assetId}/*`,
+    file: `textures/${name}/*`,
     source: "ambientCG",
     url: asset.shortLink,
     author: "Lennart Demes (ambientCG)",

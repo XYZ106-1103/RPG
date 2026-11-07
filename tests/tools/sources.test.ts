@@ -43,6 +43,8 @@ describe("Poly Haven", () => {
     expect(phCredit("rock", "texture", { authors: { "Amal Kumar": "All" } })).toEqual({ file: "textures/rock/*", source: "Poly Haven", url: "https://polyhaven.com/a/rock", author: "Amal Kumar", license: "CC0" });
     expect(phCredit("sky", "hdri", { authors: { A: "x", B: "y" } }).file).toBe("hdri/sky*");
     expect(phCredit("crate", "model", {}).author).toBe("Poly Haven");
+    // --name: 위치 패턴은 게임 이름, 출처 링크는 원래 ID
+    expect(phCredit("burned_ground_01", "texture", {}, "terrain_ash")).toMatchObject({ file: "textures/terrain_ash/*", url: "https://polyhaven.com/a/burned_ground_01" });
   });
 });
 
@@ -87,6 +89,7 @@ describe("ambientCG", () => {
   });
 
   it("credits", () => {
+    expect(acgCredit(parseAsset(json, "Ground054"), "terrain_mud")).toMatchObject({ file: "textures/terrain_mud/*", url: "https://ambientcg.com/a/Ground054" });
     expect(acgCredit(parseAsset(json, "Ground054"))).toEqual({ file: "textures/Ground054/*", source: "ambientCG", url: "https://ambientcg.com/a/Ground054", author: "Lennart Demes (ambientCG)", license: "CC0" });
   });
 });

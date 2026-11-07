@@ -131,11 +131,12 @@ export function selectFiles(id, kind, files, opts = {}) {
  * @param {string} id
  * @param {PolyhavenKind} kind
  * @param {unknown} info /info 응답
+ * @param {string} [name] 게임 안 재질/에셋 이름 (기본: 에셋 ID). 최종 위치 패턴에 쓴다
  * @returns {import("./credits.mjs").CreditEntry}
  */
-export function creditFor(id, kind, info) {
+export function creditFor(id, kind, info, name = id) {
   const authors = isRecord(info) && isRecord(info.authors) ? Object.keys(info.authors) : [];
-  const file = kind === "texture" ? `textures/${id}/*` : kind === "hdri" ? `hdri/${id}*` : `props/${id}*`;
+  const file = kind === "texture" ? `textures/${name}/*` : kind === "hdri" ? `hdri/${name}*` : `props/${name}*`;
   return { file, source: "Poly Haven", url: `https://polyhaven.com/a/${id}`, author: authors.join(", ") || "Poly Haven", license: "CC0" };
 }
 

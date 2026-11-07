@@ -57,8 +57,8 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
   {
-    // 브라우저 검사 스크립트: page.evaluate 안의 코드는 브라우저에서 실행된다
-    files: ["tools/e2e/**/*.mjs"],
+    // 브라우저에서 실행되는 도구 코드 (e2e 검사의 page.evaluate, HDR→.env 변환 페이지)
+    files: ["tools/e2e/**/*.mjs", "tools/env/**/*.mjs", "tools/hdr_to_env.mjs"],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 );

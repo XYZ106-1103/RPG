@@ -4,7 +4,10 @@
  * Poly Haven 에셋 다운로드 → raw/ 저장 → credits.json 자동 추가.
  *
  * 사용:
- *   node tools/fetch_polyhaven.mjs <에셋ID> [--res 2k] [--maps Diffuse,nor_gl,arm] [--format jpg] [--dry-run]
+ *   node tools/fetch_polyhaven.mjs <에셋ID> [--name 재질명] [--res 2k] [--maps Diffuse,nor_gl,arm] [--format jpg] [--dry-run]
+ *
+ * --name: 게임에서 쓸 이름 (예: terrain_ash). 저장 폴더와 credits 패턴에 쓴다 — 에셋을 바꿔도 코드가 그대로이도록
+ *         역할 기준 이름을 권장한다. 생략하면 에셋 ID.
  *
  * 예:
  *   node tools/fetch_polyhaven.mjs rocky_terrain_02                 텍스처: 컬러 + OpenGL 노멀 + ARM(ORM), 2K JPG
@@ -13,8 +16,8 @@
  *   node tools/fetch_polyhaven.mjs wooden_crate_02                  모델: glTF + 텍스처, 1K
  *
  * 기본 해상도는 CLAUDE.md 기준 (텍스처 2K, HDRI 2K, 모델 1K). 4K는 클로즈업 히어로 재질에만 쓴다.
- * 저장: 텍스처/HDRI → raw/textures/<ID>/, 모델 → raw/models/<ID>/
- * credits: 텍스처 "textures/<ID>/*", HDRI "hdri/<ID>*", 모델 "props/<ID>*" (최적화 결과물을 둘 위치)
+ * 저장: 텍스처/HDRI → raw/textures/<이름>/, 모델 → raw/models/<이름>/
+ * credits: 텍스처 "textures/<이름>/*", HDRI "hdri/<이름>*", 모델 "props/<이름>*" (최적화 결과물을 둘 위치)
  * 허용 목록에 막히면 멈추고 추가할 도메인을 알려 준다 (종료 코드 3).
  */
 import { createHash } from "node:crypto";
@@ -32,13 +35,19 @@ const { values, positionals } = parseArgs({
     maps: { type: "string" },
     format: { type: "string" },
     out: { type: "string" },
+    name: { type: "string" },
     "dry-run": { type: "boolean", default: false },
   },
 });
 
 const id = positionals[0];
 if (!id || !/^[a-z0-9_]+$/i.test(id)) {
-  console.error("사용: node tools/fetch_polyhaven.mjs <에셋ID> [--res 2k] [--maps Diffuse,nor_gl,arm] [--format jpg] [--dry-run]");
+  console.error("사용: node tools/fetch_polyhaven.mjs <에셋ID> [--name 재질명] [--res 2k] [--maps Diffuse,nor_gl,arm] [--format jpg] [--dry-run]");
+  process.exit(2);
+}
+const assetName = values.name ?? id;
+if (!/^[a-z0-9_]+$/i.test(assetName)) {
+  console.error(`--name은 영문/숫자/밑줄만 쓸 수 있습니다: ${assetName}`);
   process.exit(2);
 }
 
@@ -53,7 +62,7 @@ try {
   if (values.format) opts.format = values.format;
   if (values.maps) opts.maps = values.maps.split(",").map((s) => s.trim()).filter(Boolean);
   const selected = selectFiles(id, kind, files, opts);
-  const outDir = values.out ?? rawDirFor(id, kind);
+  const outDir = values.out ?? rawDirFor(assetName, kind);
   const total = selected.reduce((s, f) => s + f.size, 0);
   const name = "name" in info ? String(info.name) : id;
 
@@ -75,15 +84,15 @@ try {
     console.log(`  ✓ ${dest}  ${formatBytes(bytes)}`);
   }
 
-  const credit = creditFor(id, kind, info);
+  const credit = creditFor(id, kind, info, assetName);
   const result = await upsertCredit(credit);
   console.log(`credits.json ${result === "added" ? "추가" : "갱신"}: ${credit.file} — ${credit.author} (${credit.license})`);
   const next =
     kind === "texture"
-      ? `다음: 필요하면 pack_orm.mjs로 ORM을 만들고 public/assets/textures/${id}/에 넣으세요.`
+      ? `다음: node tools/texture_ktx2.mjs ${outDir} public/assets/textures/${assetName} --name ${assetName}`
       : kind === "hdri"
-        ? `다음: .env(Babylon 환경맵)로 변환해 public/assets/hdri/${id}.env로 넣으세요.`
-        : `다음: node tools/optimize.mjs ${outDir}/${selected[0]?.name ?? ""} public/assets/props/${id}.glb`;
+        ? `다음: node tools/hdr_to_env.mjs ${outDir}/${selected[0]?.name ?? ""} public/assets/hdri/${assetName}.env`
+        : `다음: node tools/optimize.mjs ${outDir}/${selected[0]?.name ?? ""} public/assets/props/${assetName}.glb`;
   console.log(next);
 } catch (err) {
   exitWithError(err);

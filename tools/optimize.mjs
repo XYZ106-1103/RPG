@@ -22,11 +22,10 @@ import { parseArgs } from "node:util";
 import { Logger, NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, KHRTextureBasisu } from "@gltf-transform/extensions";
 import { dedup, getSceneVertexCount, listTextureSlots, meshopt, prune, resample, VertexCountMethod } from "@gltf-transform/functions";
-import { encodeToKTX2 } from "ktx2-encoder";
 import { MeshoptDecoder, MeshoptEncoder } from "meshoptimizer";
-import sharp from "sharp";
 import { formatBytes } from "./lib/net.mjs";
-import { classifyTexture, encodeOptionsFor, gpuBytes } from "./lib/textureMode.mjs";
+import { change, encodeImageKTX2, modeLabel } from "./lib/ktx2.mjs";
+import { classifyTexture } from "./lib/textureMode.mjs";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -52,38 +51,6 @@ function intArg(v, name, min, max) {
   const n = Number(v);
   if (!Number.isInteger(n) || n < min || n > max) throw new Error(`--${name}는 ${min}~${max} 정수여야 합니다: ${v}`);
   return n;
-}
-
-/** sharp로 RGBA 디코딩 (ktx2-encoder가 Node에서 요구) */
-async function decodeRGBA(/** @type {Uint8Array} */ buf) {
-  const { data, info } = await sharp(buf).ensureAlpha().raw({ depth: "uchar" }).toBuffer({ resolveWithObject: true });
-  return { width: info.width, height: info.height, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) };
-}
-
-/**
- * Basis 인코더(WASM)는 진행 로그를 표준 출력에 직접 찍는다 — 인코딩하는 동안만 막는다.
- * @template T
- * @param {() => Promise<T>} fn
- * @returns {Promise<T>}
- */
-async function quiet(fn) {
-  const write = process.stdout.write;
-  const log = console.log;
-  process.stdout.write = /** @type {typeof process.stdout.write} */ (() => true);
-  console.log = () => {};
-  try {
-    return await fn();
-  } finally {
-    process.stdout.write = write;
-    console.log = log;
-  }
-}
-
-/** @param {number} before @param {number} after */
-function change(before, after) {
-  if (!before) return "";
-  const pct = (after / before - 1) * 100;
-  return `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`;
 }
 
 /** 입력 전체 용량 (.gltf면 외부 버퍼/이미지 포함) */
@@ -126,30 +93,18 @@ try {
       }
       const { mode, conflict } = classifyTexture(slots);
       if (conflict) console.warn(`⚠ ${name}: 여러 용도로 공유됨 [${slots.join(", ")}] → ${mode}로 압축`);
-      let src = image;
-      const meta = await sharp(image).metadata();
-      let w = meta.width ?? 0;
-      let h = meta.height ?? 0;
-      const gpuBefore = gpuBytes(w, h, "raw");
-      if (max && Math.max(w, h) > max) {
-        const resized = await sharp(image).resize(max, max, { fit: "inside", kernel: "lanczos3" }).png().toBuffer({ resolveWithObject: true });
-        src = new Uint8Array(resized.data.buffer, resized.data.byteOffset, resized.data.byteLength);
-        w = resized.info.width;
-        h = resized.info.height;
-      }
-      /** @type {Record<string, unknown>} */
-      const q = {};
-      if (etc1sQuality !== undefined) q.etc1sQuality = etc1sQuality;
-      if (uastcLevel !== undefined) q.uastcLevel = uastcLevel;
-      if (rdo !== undefined) q.rdo = rdo;
+      /** @type {import("./lib/ktx2.mjs").KtxQuality} */
+      const quality = {};
+      if (etc1sQuality !== undefined) quality.etc1sQuality = etc1sQuality;
+      if (uastcLevel !== undefined) quality.uastcLevel = uastcLevel;
+      if (rdo !== undefined) quality.rdo = rdo;
       process.stdout.write(`  KTX2 ${name} (${mode}) ... `);
-      const ktx = await quiet(() => encodeToKTX2(src, { ...encodeOptionsFor(mode, q), imageDecoder: decodeRGBA }));
+      const { ktx, width: w, height: h, gpuBefore, gpuAfter } = await encodeImageKTX2(image, mode, max ? { max, quality } : { quality });
       process.stdout.write("완료\n");
       tex.setImage(ktx).setMimeType("image/ktx2");
       if (tex.getURI()) tex.setURI(tex.getURI().replace(/\.(png|jpe?g|webp)$/i, ".ktx2"));
       any = true;
-      const label = mode === "color" ? "ETC1S sRGB" : mode === "normal" ? "UASTC 노멀" : "UASTC 선형";
-      rows.push({ name, slots: slots.join(","), mode: label, size: `${w}x${h}`, before: image.byteLength, after: ktx.byteLength, gpuBefore, gpuAfter: gpuBytes(w, h, mode, meta.hasAlpha ?? false) });
+      rows.push({ name, slots: slots.join(","), mode: modeLabel(mode), size: `${w}x${h}`, before: image.byteLength, after: ktx.byteLength, gpuBefore, gpuAfter });
     }
     if (any) doc.createExtension(KHRTextureBasisu).setRequired(true);
   }
