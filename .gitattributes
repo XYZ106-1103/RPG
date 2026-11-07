@@ -6,3 +6,5 @@
 *.png filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
 *.ktx2 filter=lfs diff=lfs merge=lfs -text
+# Babylon 환경맵 (.env는 바이너리 — dotenv 파일과 섞이지 않게 hdri 폴더만)
+public/assets/hdri/*.env filter=lfs diff=lfs merge=lfs -text

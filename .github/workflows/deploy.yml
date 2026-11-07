@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true # public/assets의 LFS 에셋(GLB/텍스처)을 실제 파일로 받는다
+      # LFS는 게임이 쓰는 public/assets만 받는다 (raw/ 원본까지 받으면 LFS 월 다운로드 한도를 빨리 쓴다)
+      - run: git lfs pull --include="public/assets/**"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
