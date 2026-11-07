@@ -20,7 +20,8 @@
     "assets:optimize": "node tools/optimize.mjs",
     "prepare": "node tools/setup_hooks.mjs",
     "test:py": "python3 -m unittest discover -s tests/blender",
-    "blender:cleanup": "node tools/blender/run.mjs cleanup"
+    "blender:cleanup": "node tools/blender/run.mjs cleanup",
+    "blender:merge": "node tools/blender/run.mjs merge"
   },
   "repository": {
     "type": "git",
