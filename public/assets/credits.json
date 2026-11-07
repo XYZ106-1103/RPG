@@ -1,1 +1,72 @@
-[]
+[
+  {
+    "file": "hdri/night_overcast*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/kloppenheim_07_puresky",
+    "author": "Greg Zaal, Jarod Guest",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/prop_burnt_bark/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/pine_bark",
+    "author": "Dimitrios Savva",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/prop_rusty_metal/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/rust_coarse_01",
+    "author": "Dimitrios Savva, Rico Cilliers",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/prop_stone_wall/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/old_stone_wall_02",
+    "author": "Charlotte Baglioni",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/terrain_ash/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/burned_ground_01",
+    "author": "Rob Tuytel",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/terrain_cracked/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/dry_ground_01",
+    "author": "Rob Tuytel",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/terrain_drygrass/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/withered_grass",
+    "author": "Charlotte Baglioni",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/terrain_gravel/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/gravel_stones",
+    "author": "Amal Kumar",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/terrain_mud/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/brown_mud_03",
+    "author": "Rob Tuytel",
+    "license": "CC0"
+  },
+  {
+    "file": "textures/terrain_rock/*",
+    "source": "Poly Haven",
+    "url": "https://polyhaven.com/a/rock_face_03",
+    "author": "Dario Barresi, Rico Cilliers",
+    "license": "CC0"
+  }
+]
