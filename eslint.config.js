@@ -56,4 +56,9 @@ export default tseslint.config(
     files: ["tools/**/*.{js,mjs}", "*.config.{js,ts}"],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    // 브라우저 검사 스크립트: page.evaluate 안의 코드는 브라우저에서 실행된다
+    files: ["tools/e2e/**/*.mjs"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
 );

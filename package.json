@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e:input": "node tools/e2e/input-smoke.mjs"
   },
   "repository": {
     "type": "git",
