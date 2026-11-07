@@ -13,6 +13,7 @@ import type { InputFrame } from "../../sim/inputFrame";
 import { ActionMapper, type GamepadSnapshot, type InputDevice } from "./actionMapper";
 import { DEFAULT_BINDINGS, type InputBindings } from "./bindings";
 import type { Vec2 } from "./deadzone";
+import { MouseButtonTracker } from "./mouseButtons";
 import { DEFAULT_INPUT_SETTINGS, type InputSettings } from "./settings";
 
 export interface InputManagerOptions {
@@ -29,8 +30,13 @@ export class InputManager {
   private readonly disposers: (() => void)[] = [];
   private padIndex: number | null = null;
   private warnedNonStandard = new Set<string>();
-  /** 포인터 락이 걸린 그 클릭이 공격으로 나가지 않도록 한 번 무시한다 */
-  private swallowNextMouseUp = -1;
+  /** 마우스 버튼 상태 (포인터 이벤트 buttons 마스크 기반 — mouseButtons.ts 참고) */
+  private readonly mouseButtons = new MouseButtonTracker();
+  /** unadjustedMovement 옵션이 거부된 적이 있으면 다음부터 옵션 없이 요청한다 */
+  private unadjustedSupported = true;
+  private lockFailed = false;
+  /** requestPointerLock이 Promise를 돌려주지 않는 구형 브라우저면 pointerlockerror 이벤트로 실패를 안다 */
+  private lockErrorFromEvent = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -44,6 +50,11 @@ export class InputManager {
 
   get isPointerLocked(): boolean {
     return document.pointerLockElement === this.canvas;
+  }
+
+  /** 마지막 포인터 락 요청이 실패했는가 (다시 클릭하라는 안내용, 잠기면 false) */
+  get pointerLockFailed(): boolean {
+    return this.lockFailed && !this.isPointerLocked;
   }
 
   get activeDevice(): InputDevice {
@@ -68,18 +79,44 @@ export class InputManager {
     this.mapper.setBindings(bindings);
   }
 
+  /**
+   * 클릭(사용자 제스처) 안에서 호출해야 한다.
+   * unadjustedMovement(OS 마우스 가속을 끈 원시 이동량)는 지원 브라우저에서만 쓴다. 거부되면 기억해 두고
+   * 옵션 없이 다시 요청한다 — 이 재시도는 제스처 밖이라 브라우저에 따라 실패할 수 있으므로,
+   * 그때는 안내를 띄우고 다음 클릭부터 처음부터 옵션 없이 요청한다.
+   */
   async requestPointerLock(): Promise<void> {
     if (this.isPointerLocked) return;
-    try {
-      // unadjustedMovement: OS 마우스 가속을 끈 원시 이동량 (지원 브라우저만)
-      await this.canvas.requestPointerLock({ unadjustedMovement: true });
-    } catch {
+    if (this.unadjustedSupported) {
       try {
-        await this.canvas.requestPointerLock();
+        await this.lock({ unadjustedMovement: true });
+        return;
       } catch (err) {
-        console.warn("[input] 포인터 락 요청 실패", err);
+        if (err instanceof DOMException && err.name === "NotSupportedError") {
+          this.unadjustedSupported = false;
+          console.info("[input] 원시 마우스 입력(unadjustedMovement) 미지원 — 일반 포인터 락으로 전환");
+        } else {
+          this.onLockError(err);
+          return;
+        }
       }
     }
+    try {
+      await this.lock();
+    } catch (err) {
+      this.onLockError(err);
+    }
+  }
+
+  private async lock(options?: PointerLockOptions): Promise<void> {
+    const result: unknown = this.canvas.requestPointerLock(options);
+    this.lockErrorFromEvent = !(result instanceof Promise);
+    await result;
+  }
+
+  private onLockError(err: unknown): void {
+    this.lockFailed = true;
+    console.warn("[input] 포인터 락 요청 실패 — 화면을 다시 클릭하세요", err);
   }
 
   exitPointerLock(): void {
@@ -134,38 +171,55 @@ export class InputManager {
       if (this.mapper.keyUp(e.code, performance.now())) e.preventDefault();
     });
 
-    onCanvas("mousedown", (e) => {
-      if (!this.isPointerLocked) {
-        // 잠기지 않은 상태의 클릭은 포인터 락 요청에만 쓰고 공격으로 보내지 않는다
-        if (this.lockOnClick && e.button === 0) {
-          this.swallowNextMouseUp = e.button;
-          void this.requestPointerLock();
-        }
-        return;
-      }
-      if (this.mapper.mouseDown(e.button, performance.now())) e.preventDefault();
+    // 마우스 버튼은 포인터 이벤트로 받는다. Babylon이 pointerdown에서 preventDefault()를 하면
+    // mousedown/mouseup이 오지 않기 때문이다 (mouseButtons.ts 참고).
+    // 잠기지 않은 상태에서 누른 버튼은 포인터 락 요청에만 쓰고, 뗄 때까지 게임에 전달하지 않는다.
+    const onButtons = (e: PointerEvent): void => {
+      if (e.pointerType !== "mouse") return;
+      this.mouseButtons.update(e.buttons, this.isPointerLocked, (button, down) => {
+        if (down) this.mapper.mouseDown(button, performance.now());
+        else this.mapper.mouseUp(button, performance.now());
+      });
+    };
+    onCanvas("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && !this.isPointerLocked && this.lockOnClick && e.button === 0) void this.requestPointerLock();
     });
-    // 마우스를 캔버스 밖에서 떼도 받을 수 있게 window에서 듣는다
-    on(window, "mouseup", (e) => {
-      if (this.swallowNextMouseUp === e.button) {
-        this.swallowNextMouseUp = -1;
-        return;
-      }
-      this.mapper.mouseUp(e.button, performance.now());
+    // 캔버스 밖에서 떼도 받을 수 있게 window에서 듣는다 (pointerdown은 캔버스에서 시작해 window까지 버블된다)
+    on(window, "pointerdown", onButtons);
+    on(window, "pointerup", onButtons);
+    on(window, "pointercancel", () => {
+      this.mouseButtons.reset();
+      this.mapper.releaseMouse();
     });
-    on(window, "mousemove", (e) => {
+    on(window, "pointermove", (e) => {
+      onButtons(e); // 두 번째 버튼부터는 pointermove로 온다
       if (this.isPointerLocked) this.mapper.mouseMove(e.movementX, e.movementY);
     });
     onCanvas("contextmenu", (e) => e.preventDefault());
 
     onDoc("pointerlockchange", () => {
-      if (!this.isPointerLocked) this.mapper.releaseMouse();
+      if (this.isPointerLocked) {
+        this.lockFailed = false;
+      } else {
+        this.mouseButtons.ignoreHeld();
+        this.mapper.releaseMouse();
+      }
+    });
+    onDoc("pointerlockerror", () => {
+      // Promise를 돌려주는 브라우저는 거부(reject)로 이미 처리한다 — 같은 실패가 이벤트로도 오므로 무시
+      if (this.lockErrorFromEvent) this.onLockError(new Error("pointerlockerror"));
     });
     onDoc("visibilitychange", () => {
-      if (document.hidden) this.mapper.releaseAll();
+      if (document.hidden) {
+        this.mouseButtons.reset();
+        this.mapper.releaseAll();
+      }
     });
     // 포커스를 잃으면 keyup이 오지 않으므로 모두 뗀 것으로 처리 (키가 눌린 채로 남는 버그 방지)
-    on(window, "blur", () => this.mapper.releaseAll());
+    on(window, "blur", () => {
+      this.mouseButtons.reset();
+      this.mapper.releaseAll();
+    });
 
     on(window, "gamepadconnected", (e) => {
       console.info(`[input] 게임패드 연결: ${e.gamepad.id} (mapping: ${e.gamepad.mapping || "없음"})`);
