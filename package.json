@@ -14,9 +14,11 @@
     "test:watch": "vitest",
     "e2e:input": "node tools/e2e/input-smoke.mjs",
     "check:credits": "node tools/check_credits.mjs",
-    "prepare": "node tools/setup_hooks.mjs",
     "assets:polyhaven": "node tools/fetch_polyhaven.mjs",
-    "assets:ambientcg": "node tools/fetch_ambientcg.mjs"
+    "assets:ambientcg": "node tools/fetch_ambientcg.mjs",
+    "assets:orm": "node tools/pack_orm.mjs",
+    "assets:optimize": "node tools/optimize.mjs",
+    "prepare": "node tools/setup_hooks.mjs"
   },
   "repository": {
     "type": "git",
@@ -31,10 +33,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/node": "^22.20.5",
     "eslint": "^10.14.0",
     "fflate": "^0.8.3",
     "globals": "^17.14.0",
+    "ktx2-encoder": "^0.6.0",
+    "meshoptimizer": "^1.3.0",
+    "sharp": "^0.35.5",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.1",
     "vite": "^8.3.5",
