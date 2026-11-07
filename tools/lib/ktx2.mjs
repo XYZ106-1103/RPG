@@ -67,5 +67,5 @@ export function change(/** @type {number} */ before, /** @type {number} */ after
 
 /** @param {import("./textureMode.mjs").TextureMode} mode */
 export function modeLabel(mode) {
-  return mode === "color" ? "ETC1S sRGB" : mode === "normal" ? "UASTC 노멀" : "UASTC 선형";
+  return mode === "color" ? "ETC1S sRGB" : mode === "dataCompact" ? "ETC1S 선형" : mode === "normal" ? "UASTC 노멀" : "UASTC 선형";
 }

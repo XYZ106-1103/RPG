@@ -7,8 +7,20 @@ import { detectOrmMaps } from "./orm.mjs";
 
 /** @typedef {"albedo" | "normal" | "orm" | "height"} TextureRole */
 
-/** 역할 → KTX2 압축 방식 (textureMode.mjs) */
-export const ROLE_MODE = /** @type {const} */ ({ albedo: "color", normal: "normal", orm: "data", height: "data" });
+/** 역할 → KTX2 압축 방식 (textureMode.mjs). ORM/높이는 기본 ETC1S(B안), --orm-codec/--height-codec uastc로 바꿀 수 있다 */
+export const ROLE_MODE = /** @type {const} */ ({ albedo: "color", normal: "normal", orm: "dataCompact", height: "dataCompact" });
+
+/**
+ * @param {"orm" | "height"} role
+ * @param {string | undefined} codec "etc1s" | "uastc" | undefined(기본)
+ * @returns {import("./textureMode.mjs").TextureMode}
+ */
+export function dataModeFor(role, codec) {
+  if (codec === undefined) return ROLE_MODE[role];
+  if (codec === "uastc") return "data";
+  if (codec === "etc1s") return "dataCompact";
+  throw new Error(`--${role}-codec는 etc1s 또는 uastc여야 합니다: ${codec}`);
+}
 export const ROLES = /** @type {const} */ (["albedo", "normal", "orm", "height"]);
 
 const IMAGE_EXT = /\.(jpe?g|png|tiff?|webp)$/i;

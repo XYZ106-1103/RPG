@@ -4,14 +4,16 @@
  * 원본 텍스처 폴더 → 역할별 KTX2 (지형/소품 재질용 낱장 텍스처. GLB 안 텍스처는 optimize.mjs가 처리한다).
  *
  * 사용:
- *   node tools/texture_ktx2.mjs <원본 폴더> <출력 폴더> --name <재질명> [--max 2048] [--rdo 1] [--etc1s-quality 128] [--uastc-level 2]
+ *   node tools/texture_ktx2.mjs <원본 폴더> <출력 폴더> --name <재질명> [--orm-codec etc1s|uastc] [--height-codec etc1s|uastc]
+ *                               [--max 2048] [--rdo 1] [--etc1s-quality 128] [--uastc-level 2]
  * 예:
  *   node tools/texture_ktx2.mjs raw/textures/terrain_ash public/assets/textures/terrain_ash --name terrain_ash
  *
  * 역할 판별 (파일명): 컬러(_diff/_Color) → <이름>_albedo.ktx2 (ETC1S sRGB)
  *                     OpenGL 노멀(_nor_gl/_NormalGL) → <이름>_normal.ktx2 (UASTC 노멀)
- *                     ORM(_arm/_orm) → <이름>_orm.ktx2 (UASTC 선형)
- *                     높이(_disp/_Displacement) → <이름>_height.ktx2 (UASTC 선형)
+ *                     ORM(_arm/_orm) → <이름>_orm.ktx2 (기본 ETC1S 선형, --orm-codec uastc로 고화질)
+ *                     높이(_disp/_Displacement) → <이름>_height.ktx2 (기본 ETC1S 선형, --height-codec uastc)
+ * 용량: 2K 기준 UASTC 한 장 3~5MB, ETC1S 0.5~0.7MB. 노멀만 UASTC로 두는 혼합 방식이 기본이다.
  * ORM이 없고 AO/Roughness/Metallic이 따로 있으면 pack_orm과 같은 방식으로 패킹한 뒤 변환한다.
  * DirectX 노멀(_nor_dx/_NormalDX)과 그 밖의 맵은 건너뛴다.
  */
@@ -22,7 +24,7 @@ import { parseArgs } from "node:util";
 import { change, encodeImageKTX2, modeLabel } from "./lib/ktx2.mjs";
 import { formatBytes } from "./lib/net.mjs";
 import { ORM_CHANNELS, packOrm } from "./lib/orm.mjs";
-import { ROLES, ROLE_MODE, outputName, planTextureSet } from "./lib/textureSet.mjs";
+import { ROLES, ROLE_MODE, dataModeFor, outputName, planTextureSet } from "./lib/textureSet.mjs";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -32,6 +34,8 @@ const { values, positionals } = parseArgs({
     rdo: { type: "string" },
     "etc1s-quality": { type: "string" },
     "uastc-level": { type: "string" },
+    "orm-codec": { type: "string" },
+    "height-codec": { type: "string" },
   },
 });
 
@@ -62,6 +66,8 @@ try {
   if (rdo !== undefined) quality.rdo = rdo;
   if (etc1s !== undefined) quality.etc1sQuality = etc1s;
   if (uastc !== undefined) quality.uastcLevel = uastc;
+  /** @type {Record<import("./lib/textureSet.mjs").TextureRole, import("./lib/textureMode.mjs").TextureMode>} */
+  const modes = { ...ROLE_MODE, orm: dataModeFor("orm", values["orm-codec"]), height: dataModeFor("height", values["height-codec"]) };
 
   const plan = planTextureSet(await readdir(srcDir));
   /** @type {Partial<Record<import("./lib/textureSet.mjs").TextureRole, string>>} */
@@ -89,7 +95,7 @@ try {
   for (const role of ROLES) {
     const input = inputs[role];
     if (!input) continue;
-    const mode = ROLE_MODE[role];
+    const mode = modes[role];
     const image = new Uint8Array(await readFile(input));
     const r = await encodeImageKTX2(image, mode, max ? { max, quality } : { quality });
     const out = join(outDir, outputName(name, role));

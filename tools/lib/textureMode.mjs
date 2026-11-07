@@ -4,9 +4,13 @@
  *  - normal: 노멀맵 → UASTC + 노멀맵 모드, 선형(linear)
  *  - color : 베이스컬러/이미시브 등 색 → ETC1S, sRGB
  *  - data  : ORM(AO/러프니스/메탈릭) 등 선형 데이터 → UASTC, 선형 (ETC1S는 러프니스 계조가 깨지기 쉽다)
+ *  - dataCompact: 선형 데이터를 ETC1S로 (UASTC의 약 1/8 용량, 계조 손실 가능) — 지형 ORM/높이 기본값
+ *
+ * UASTC는 픽셀당 1바이트라 RDO를 세게 걸어도 2K 한 장이 3~5MB다. 웹 다운로드 용량을 위해
+ * 노멀만 UASTC로 두고 ORM/높이는 ETC1S로 하는 혼합 방식(B안)을 texture_ktx2.mjs 기본으로 쓴다.
  */
 
-/** @typedef {"normal" | "color" | "data"} TextureMode */
+/** @typedef {"normal" | "color" | "data" | "dataCompact"} TextureMode */
 
 const NORMAL_SLOTS = /normalTexture$/i; // normalTexture, clearcoatNormalTexture
 const COLOR_SLOTS = /^(baseColorTexture|emissiveTexture|diffuseTexture|sheenColorTexture|specularColorTexture|specularGlossinessTexture)$/i;
@@ -32,8 +36,9 @@ export function classifyTexture(slots) {
  * @param {{ etc1sQuality?: number, uastcLevel?: number, rdo?: number }} [q] rdo: UASTC RDO 강도 (0 = 끔, 기본 1 — zstd 용량 25~35% 감소, 화질 손실 적음)
  */
 export function encodeOptionsFor(mode, q = {}) {
-  if (mode === "color") {
-    return { isUASTC: false, qualityLevel: q.etc1sQuality ?? 128, compressionLevel: 2, isPerceptual: true, isSetKTX2SRGBTransferFunc: true, generateMipmap: true };
+  if (mode === "color" || mode === "dataCompact") {
+    const srgb = mode === "color";
+    return { isUASTC: false, qualityLevel: q.etc1sQuality ?? 128, compressionLevel: 2, isPerceptual: srgb, isSetKTX2SRGBTransferFunc: srgb, generateMipmap: true };
   }
   const rdo = q.rdo ?? 1;
   return {
@@ -51,13 +56,14 @@ export function encodeOptionsFor(mode, q = {}) {
 
 /**
  * GPU 메모리 추정 (밉맵 포함 4/3배). 원본: RGBA8 4바이트/픽셀.
- * KTX2 트랜스코딩 후: UASTC → BC7/ASTC 1바이트/픽셀, ETC1S → BC1/ETC1 0.5바이트/픽셀 (알파 있으면 1).
+ * KTX2 트랜스코딩 후: UASTC → BC7/ASTC 1바이트/픽셀, ETC1S(color/dataCompact) → BC1/ETC1 0.5바이트/픽셀 (알파 있으면 1).
  * @param {number} width
  * @param {number} height
  * @param {TextureMode | "raw"} mode
  * @param {boolean} [alpha]
  */
 export function gpuBytes(width, height, mode, alpha = false) {
-  const bpp = mode === "raw" ? 4 : mode === "color" && !alpha ? 0.5 : 1;
+  const etc1s = mode === "color" || mode === "dataCompact";
+  const bpp = mode === "raw" ? 4 : etc1s && !alpha ? 0.5 : 1;
   return Math.round((width * height * bpp * 4) / 3);
 }

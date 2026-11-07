@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ROLE_MODE, outputName, planTextureSet } from "../../tools/lib/textureSet.mjs";
+import { ROLE_MODE, dataModeFor, outputName, planTextureSet } from "../../tools/lib/textureSet.mjs";
 
 describe("텍스처 세트 역할 판별", () => {
   it("Poly Haven: diff/nor_gl/arm/disp, DirectX 노멀은 건너뛴다", () => {
@@ -28,7 +28,12 @@ describe("텍스처 세트 역할 판별", () => {
   });
 
   it("역할 → 압축 방식, 출력 이름", () => {
-    expect(ROLE_MODE).toEqual({ albedo: "color", normal: "normal", orm: "data", height: "data" });
+    // B안: 노멀만 UASTC, ORM/높이는 ETC1S 선형
+    expect(ROLE_MODE).toEqual({ albedo: "color", normal: "normal", orm: "dataCompact", height: "dataCompact" });
+    expect(dataModeFor("orm", undefined)).toBe("dataCompact");
+    expect(dataModeFor("orm", "uastc")).toBe("data");
+    expect(dataModeFor("height", "etc1s")).toBe("dataCompact");
+    expect(() => dataModeFor("orm", "bc7")).toThrow(/etc1s 또는 uastc/);
     expect(outputName("terrain_ash", "albedo")).toBe("terrain_ash_albedo.ktx2");
   });
 });

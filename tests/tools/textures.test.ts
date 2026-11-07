@@ -25,6 +25,8 @@ describe("텍스처 슬롯 분류", () => {
     expect(encodeOptionsFor("data")).toMatchObject({ isUASTC: true, isNormalMap: false, isSetKTX2SRGBTransferFunc: false });
     expect(encodeOptionsFor("data", { rdo: 0 })).toMatchObject({ enableRDO: false });
     expect(encodeOptionsFor("data", { rdo: 0 })).not.toHaveProperty("rdoQualityLevel");
+    // dataCompact: ETC1S지만 선형 (sRGB 변환 없음)
+    expect(encodeOptionsFor("dataCompact")).toMatchObject({ isUASTC: false, isPerceptual: false, isSetKTX2SRGBTransferFunc: false });
   });
 
   it("GPU 메모리 추정: 원본 RGBA 4B/px, UASTC 1B/px, ETC1S 0.5B/px (밉맵 4/3)", () => {
@@ -32,6 +34,7 @@ describe("텍스처 슬롯 분류", () => {
     expect(gpuBytes(1024, 1024, "data")).toBe(Math.round(1024 * 1024 * (4 / 3)));
     expect(gpuBytes(1024, 1024, "color")).toBe(Math.round(1024 * 1024 * 0.5 * (4 / 3)));
     expect(gpuBytes(1024, 1024, "color", true)).toBe(gpuBytes(1024, 1024, "data"));
+    expect(gpuBytes(1024, 1024, "dataCompact")).toBe(gpuBytes(1024, 1024, "color"));
   });
 });
 
