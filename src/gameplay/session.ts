@@ -7,10 +7,17 @@
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import type { PointLight } from "@babylonjs/core/Lights/pointLight";
 import type { Scene } from "@babylonjs/core/scene";
+import { CharacterAnimator } from "../anim/animator";
+import { HERO_PROFILE } from "../anim/characters/hero";
+import { ClipLibrary } from "../anim/clipLibrary";
+import { attachWeapon, bakeSocketTracks } from "../anim/sockets";
+import { animEventsTimelineLoader } from "../anim/timelineLoader";
+import { CharacterAsset, type CharacterModel } from "../assets/characterAsset";
 import { bindDebugKey } from "../core/debugKeys";
 import { EventBus } from "../core/eventBus";
 import type { InputManager } from "../core/input";
 import { CharacterSystem } from "../physics/character/characterSystem";
+import { BakedSocketProvider, type SocketTrack } from "../physics/combat/bakedSockets";
 import { HavokHitQuery } from "../physics/combat/havokHitQuery";
 import { placeholderSockets } from "../physics/combat/placeholderSockets";
 import { SweepDebugView } from "../physics/combat/sweepDebugView";
@@ -19,6 +26,7 @@ import { PhysicsWorld } from "../physics/physicsWorld";
 import { createTestSceneColliders } from "../physics/testSceneColliders";
 import { LANTERN_INTENSITY, createTestScene } from "../render/testScene";
 import type { AttackInstance } from "../sim/combat/types";
+import { PLAYER_TIMELINES } from "../sim/data/playerTimelines";
 import { isDead, isStaggered, type Entity, type EntityId } from "../sim/entity";
 import type { GameEventMap, SimEvent } from "../sim/events";
 import { createInputFrame, wasPressed } from "../sim/inputFrame";
@@ -36,7 +44,16 @@ import { ThirdPersonCamera } from "./camera/thirdPersonCamera";
 import { createFeelSettings, type FeelSettings } from "./feel/feelSettings";
 import { HitFeedback } from "./feel/hitFeedback";
 import { CharacterView, ViewMaterials } from "./player/characterView";
+import { ModelCharacterView } from "./player/modelCharacterView";
 import { playerColorKey, type ViewColorKey } from "./player/stateColors";
+
+/** 플레이어 캐릭터 모델 (hero.glb). 로드에 실패하면 null → 캡슐로 표시 */
+interface HeroModelParts {
+  model: CharacterModel;
+  lib: ClipLibrary;
+  tracks: Map<string, SocketTrack>;
+  weapon: ReturnType<typeof attachWeapon>;
+}
 
 export interface SessionOptions {
   interpolate: boolean;
@@ -118,6 +135,7 @@ export class GameSession {
     canvas: HTMLCanvasElement,
     private readonly options: SessionOptions,
     hero: Entity,
+    private readonly heroModel: HeroModelParts | null,
   ) {
     this.hero = hero;
     this.materials = new ViewMaterials(scene);
@@ -126,7 +144,20 @@ export class GameSession {
       this.dummies.push({ entity, spawn: { ...spawn }, deadTicks: 0 });
     }
     const heroView = this.viewFor(hero);
-    lantern.parent = heroView.body;
+    // 등불: 모델이 있으면 리그의 Lantern 본에, 없으면 캡슐 허리에
+    const lanternBone = heroModel?.model.node(HERO_PROFILE.lanternBone) ?? null;
+    if (lanternBone) {
+      lantern.parent = lanternBone;
+      lantern.position.setAll(0);
+    } else lantern.parent = heroView.body;
+    // 피격/패리 반응 애니메이션 (sim 이벤트)
+    const react = (id: EntityId, r: "hit_front" | "hit_back" | "parry"): void => {
+      const v = this.views.get(id);
+      if (v instanceof ModelCharacterView) v.react(r);
+    };
+    this.events.on("hit", (ev) => react(ev.target, ev.backAttack ? "hit_back" : "hit_front"));
+    this.events.on("parry", (ev) => react(ev.attacker, "parry"));
+    this.events.on("weapon_bounce", (ev) => react(ev.attacker, "parry"));
 
     this.physicsDebug = new PhysicsDebugView(physics);
     this.sweepDebug = new SweepDebugView(scene, hitQuery);
@@ -153,15 +184,19 @@ export class GameSession {
     const physics = await PhysicsWorld.create(scene);
     createTestSceneColliders(physics, scene);
     const characters = new CharacterSystem(physics);
-    const hitQuery = new HavokHitQuery(physics, characters, placeholderSockets);
-    const sim = new SimWorld({ movement: characters, hitQuery });
+    // 애니메이션 이벤트 → 행동 타임라인, 캐릭터 모델 → 무기 소켓 궤적 (sim 생성 전에 끝낸다)
+    const timelineOverrides = await animEventsTimelineLoader.load(HERO_PROFILE.name);
+    const heroModel = await loadHeroModel(scene, { ...PLAYER_TIMELINES, ...timelineOverrides });
+    const sockets = new BakedSocketProvider(new Map(heroModel ? [["player", heroModel.tracks]] : []), placeholderSockets);
+    const hitQuery = new HavokHitQuery(physics, characters, sockets);
+    const sim = new SimWorld({ movement: characters, hitQuery, playerTimelines: timelineOverrides });
     const hero = sim.spawnPlayer({ x: 0, y: 0, z: 0 }, 0);
     const camera = new ThirdPersonCamera(scene, new SpringArmProbe(physics));
     camera.snapTo(0);
     // 락온 위치 조회는 렌더 보간 위치 (화면에 보이는 위치)
     let session: GameSession | null = null;
     const lockOn = new LockOnSystem(scene, camera.camera, physics, sim, hero.id, (id) => session?.views.get(id)?.display.position ?? sim.get(id)?.position ?? null);
-    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, lantern, input, canvas, options, hero);
+    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, lantern, input, canvas, options, hero, heroModel);
     return session;
   }
 
@@ -229,7 +264,24 @@ export class GameSession {
   viewFor(e: Readonly<Entity>): CharacterView {
     let v = this.views.get(e.id);
     if (!v) {
-      v = new CharacterView(this.scene, this.materials, e);
+      const hm = this.heroModel;
+      v =
+        e.id === this.hero.id && hm
+          ? new ModelCharacterView(
+              this.scene,
+              this.materials,
+              e,
+              hm.model,
+              new CharacterAnimator(hm.lib, HERO_PROFILE),
+              {
+                player: () => this.sim.players.get(e.id),
+                actionLength: (a) => this.sim.players.timelines[a].length,
+                simTick: () => this.sim.tick,
+                lockedOn: () => this.lockOn.targetId !== null,
+              },
+              hm.weapon,
+            )
+          : new CharacterView(this.scene, this.materials, e);
       this.views.set(e.id, v);
     }
     return v;
@@ -290,10 +342,18 @@ export class GameSession {
       `락온     ${lockEntity ? `#${lockEntity.id} ${lockEntity.archetype} (${lockEntity.health.toFixed(0)})` : "-"}${!lockEntity && release ? `  해제: ${release}` : ""}`,
       `접지     ${this.characters.get(h.id)?.groundState ?? "-"}  트리거 ${this.inTrigger ? "안" : "밖"}`,
       `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}`,
+      this.animLine(),
       `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}  카메라 ${((this.camera.viewYaw * 180) / Math.PI).toFixed(0)}°`,
       "",
       ...this.eventLog,
     ]);
+  }
+
+  private animLine(): string {
+    const v = this.views.get(this.hero.id);
+    if (!(v instanceof ModelCharacterView)) return "애니     (모델 없음 — 캡슐)";
+    const d = v.animator.debug;
+    return `애니     ${d.state ?? "-"}  x${d.rate.toFixed(2)}  ${d.weights}`;
   }
 
   dispose(): void {
@@ -303,5 +363,21 @@ export class GameSession {
     this.lockHint.dispose();
     this.sweepDebug.dispose();
     this.physicsDebug.dispose();
+  }
+}
+
+/** hero.glb 로드 → 인스턴스 → 클립 → 무기 부착 → 소켓 궤적 굽기. 실패하면 null (캡슐로 계속 진행) */
+async function loadHeroModel(scene: Scene, timelines: typeof PLAYER_TIMELINES): Promise<HeroModelParts | null> {
+  try {
+    const asset = await CharacterAsset.load(scene, HERO_PROFILE);
+    const model = asset.instantiate("hero");
+    const lib = new ClipLibrary(model.groups, HERO_PROFILE.name);
+    const tracks = bakeSocketTracks(model, lib, HERO_PROFILE, timelines);
+    const weapon = attachWeapon(scene, model, HERO_PROFILE);
+    console.info(`[assets] ${HERO_PROFILE.glb}: 메시 ${model.meshes.length}개, 애니메이션 ${model.groups.length}개, 소켓 궤적 ${tracks.size}개`);
+    return { model, lib, tracks, weapon };
+  } catch (err) {
+    console.error(`[assets] ${HERO_PROFILE.glb} 로드 실패 — 캡슐로 대체`, err);
+    return null;
   }
 }

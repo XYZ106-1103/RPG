@@ -88,6 +88,9 @@ export class CharacterView {
   private flashT = 0;
   private flashDuration = 0;
   private flashAlpha = 0;
+  /** 이번 렌더 프레임 시간과 히트스톱 진행(0 정지 ~ 1 정상) — 하위 클래스(모델 표시)가 애니메이션에 쓴다 */
+  protected frameDt = 0;
+  protected hitstopWeight = 1;
 
   constructor(
     scene: Scene,
@@ -161,6 +164,8 @@ export class CharacterView {
       this.held.weaponTick = this.displayWeaponTick;
     }
     const w = this.hitstop.advance(dt);
+    this.frameDt = dt;
+    this.hitstopWeight = w;
     let wt = weaponTick;
     if (w >= 1) {
       d.position.x = lx;
@@ -186,14 +191,23 @@ export class CharacterView {
     this.apply(e, color, attack, wt);
 
     // 밀림 오프셋: 0 → 최대 → 0 (사인 반주기). display에는 넣지 않아 카메라/락온은 흔들리지 않는다
+    let ox = 0;
+    let oz = 0;
     if (this.push.duration > 0 && this.push.t < this.push.duration) {
       const k = Math.sin((Math.PI * this.push.t) / this.push.duration) * this.push.distance;
-      this.body.position.x += this.push.dx * k;
-      this.body.position.z += this.push.dz * k;
+      ox = this.push.dx * k;
+      oz = this.push.dz * k;
     }
     const flashing = this.flashDuration > 0 && this.flashT < this.flashDuration;
+    this.applyEffects(ox, oz, flashing, flashing ? this.flashAlpha * (1 - this.flashT / this.flashDuration) : 0);
+  }
+
+  /** 밀림 오프셋과 플래시를 메시에 반영 (모델 표시는 재정의) */
+  protected applyEffects(offsetX: number, offsetZ: number, flashing: boolean, alpha: number): void {
+    this.body.position.x += offsetX;
+    this.body.position.z += offsetZ;
     this.body.renderOverlay = flashing;
-    if (flashing) this.body.overlayAlpha = this.flashAlpha * (1 - this.flashT / this.flashDuration);
+    if (flashing) this.body.overlayAlpha = alpha;
   }
 
   dispose(): void {
