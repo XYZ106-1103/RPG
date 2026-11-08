@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CharacterAnimator, type AnimatorInput } from "../../src/anim/animator";
 import { HERO_PROFILE } from "../../src/anim/characters/hero";
 import { ClipLibrary } from "../../src/anim/clipLibrary";
+import { PLAYER_MOVEMENT } from "../../src/sim/data/player";
 
 /** Babylon AnimationGroup 흉내 (애니메이터가 쓰는 부분만): 60fps, 길이(초) */
 class FakeGroup {
@@ -104,7 +105,8 @@ describe("CharacterAnimator", () => {
 
   it("이동 1D 블렌드: 걷기~달리기 사이 두 클립, 같은 정규화 위상", () => {
     const { anim, g } = setup();
-    for (let i = 0; i < 60; i++) anim.update(1 / 60, { ...base, moveZ: 2.5 });
+    const mid = (PLAYER_MOVEMENT.walkSpeed + PLAYER_MOVEMENT.runSpeed) / 2;
+    for (let i = 0; i < 60; i++) anim.update(1 / 60, { ...base, moveZ: mid });
     const wf = g("walk_f");
     const rf = g("run_f");
     expect(wf.weight + rf.weight).toBeCloseTo(1, 3);

@@ -4,8 +4,11 @@
  */
 import type { ButtonAction } from "../../sim/inputFrame";
 
-/** "dodge": 탭하면 roll, 길게 누르면 sprint (소울라이크 겸용 버튼) */
-export type BindTarget = ButtonAction | "dodge";
+/**
+ * "dodge": 탭하면 roll, 길게 누르면 sprint (소울라이크 겸용 버튼)
+ * "walk": 누르고 있는 동안 키보드 이동을 걷기 세기로 줄인다 (sim 버튼이 아니라 이동 입력 보정 — 스틱은 기울기로 걷는다)
+ */
+export type BindTarget = ButtonAction | "dodge" | "walk";
 
 export interface KeyboardMouseBindings {
   move: { forward: string[]; back: string[]; left: string[]; right: string[] };
@@ -64,6 +67,8 @@ export const DEFAULT_BINDINGS: Readonly<InputBindings> = {
       KeyR: "use_item",
       // 가드는 기본 배치 요청에 없어 왼쪽 Shift에 둔다. (Ctrl은 Ctrl+W가 탭을 닫으므로 피함)
       ShiftLeft: "guard",
+      // 걷기: 소울라이크 PC판 관례대로 왼쪽 Alt (브라우저 메뉴가 열리지 않게 keydown을 막는다)
+      AltLeft: "walk",
     },
     mouseButtons: {
       [MOUSE.LEFT]: "attack_light",

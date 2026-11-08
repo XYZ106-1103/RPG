@@ -99,11 +99,14 @@ describe("이동 블렌드 트리", () => {
     expect(blend1D(99, pts, native).weights).toEqual({ sprint: 1 });
   });
 
-  it("1D 재생 배속 = 실제 속도 ÷ 클립 고유 속도 (C안이면 약 1.5배), 제한 범위", () => {
+  it("1D 재생 배속 = 실제 속도 ÷ 클립 고유 속도 (D안이면 약 1.15배 — 다리가 너무 빠르지 않게), 제한 범위", () => {
     const walk = blend1D(PLAYER_MOVEMENT.walkSpeed, pts, native).rate;
     expect(walk).toBeCloseTo(PLAYER_MOVEMENT.walkSpeed / (native.walk_f ?? 1), 6);
-    expect(walk).toBeGreaterThan(1.4);
-    expect(walk).toBeLessThan(1.7);
+    for (const s of [PLAYER_MOVEMENT.walkSpeed, PLAYER_MOVEMENT.runSpeed, PLAYER_MOVEMENT.sprintSpeed]) {
+      const r = blend1D(s, pts, native).rate;
+      expect(r, `${s}m/s`).toBeGreaterThan(1.0);
+      expect(r, `${s}m/s`).toBeLessThan(1.25);
+    }
     expect(blend1D(PLAYER_MOVEMENT.sprintSpeed, pts, native).rate).toBeCloseTo(PLAYER_MOVEMENT.sprintSpeed / (native.sprint ?? 1), 6);
     expect(blend1D(30, pts, native).rate).toBe(RATE_MAX);
     expect(blend1D(0.05, pts, native).rate).toBe(RATE_MIN);

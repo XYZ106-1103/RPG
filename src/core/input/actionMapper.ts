@@ -24,9 +24,12 @@ export type InputDevice = "keyboardMouse" | "gamepad";
 
 type DodgeSource = "keyboard" | "mouse" | "gamepad";
 
-/** 바인딩 대상이 버튼 액션이면 그 비트, "dodge"면 0 */
+/** 걷기 키를 누를 때 키보드 이동 세기 — 데드존(0.2)보다 크고 걷기 기준(0.5)보다 작게 */
+export const KEYBOARD_WALK_MAGNITUDE = 0.4;
+
+/** 바인딩 대상이 버튼 액션이면 그 비트, "dodge"/"walk"면 0 */
 function bitOf(target: BindTarget): number {
-  return target === "dodge" ? 0 : BUTTON[target];
+  return target === "dodge" || target === "walk" ? 0 : BUTTON[target];
 }
 
 export class ActionMapper {
@@ -213,6 +216,10 @@ export class ActionMapper {
     this.tmp.x = kx;
     this.tmp.y = ky;
     clampLength(this.tmp);
+    if (this.anyHeldKeyBoundTo("walk")) {
+      this.tmp.x *= KEYBOARD_WALK_MAGNITUDE;
+      this.tmp.y *= KEYBOARD_WALK_MAGNITUDE;
+    }
     const kMag = Math.hypot(this.tmp.x, this.tmp.y);
     const pMag = Math.hypot(this.padMove.x, this.padMove.y);
     const src = pMag > kMag ? this.padMove : this.tmp;

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ActionMapper, type GamepadSnapshot } from "../../../src/core/input/actionMapper";
+import { ActionMapper, KEYBOARD_WALK_MAGNITUDE, type GamepadSnapshot } from "../../../src/core/input/actionMapper";
 import { DEFAULT_BINDINGS, MOUSE, PAD } from "../../../src/core/input/bindings";
 import { DEFAULT_INPUT_SETTINGS, type InputSettings } from "../../../src/core/input/settings";
+import { PLAYER_MOVEMENT } from "../../../src/sim/data/player";
 import { BUTTON, type InputFrame } from "../../../src/sim/inputFrame";
 
 const HOLD_MS = DEFAULT_INPUT_SETTINGS.dodgeHoldMs;
@@ -43,6 +44,23 @@ describe("ActionMapper — 키보드/마우스", () => {
     expect(f.moveY).toBe(0);
     m.keyDown("KeyA", 0);
     expect(sample(m).moveX).toBe(-1);
+  });
+
+  it("왼쪽 Alt를 누르고 있으면 키보드 이동이 걷기 세기(데드존 < 0.4 < 걷기 기준)로 줄고, 버튼 비트는 없다", () => {
+    const m = mapper();
+    m.keyDown("KeyW", 0);
+    expect(sample(m).moveY).toBeCloseTo(1, 2);
+    expect(m.keyDown("AltLeft", 0)).toBe(true); // 바인딩됨 → preventDefault (브라우저 메뉴 방지)
+    let f = sample(m);
+    expect(f.moveY).toBeCloseTo(KEYBOARD_WALK_MAGNITUDE, 1);
+    expect(f.moveY).toBeGreaterThan(PLAYER_MOVEMENT.moveDeadzone);
+    expect(f.moveY).toBeLessThan(PLAYER_MOVEMENT.walkThreshold);
+    expect(f.held).toBe(0);
+    m.keyDown("KeyD", 0); // 대각선도 같은 세기
+    f = sample(m);
+    expect(Math.hypot(f.moveX, f.moveY)).toBeCloseTo(KEYBOARD_WALK_MAGNITUDE, 1);
+    m.keyUp("AltLeft", 0);
+    expect(Math.hypot(sample(m).moveX, sample(m).moveY)).toBeCloseTo(1, 1);
   });
 
   it("기본 키 배치: 좌클릭 약공, 우클릭 강공, Q 락온, F 등불, E 상호작용, R 아이템, Shift 가드", () => {
