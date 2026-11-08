@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import heroEvents from "../../src/anim/events/hero.json";
 import { PLAYER_ACTIONS, PLAYER_TIMELINES } from "../../src/sim/data/playerTimelines";
-import type { AnimEventsFile } from "../../src/sim/player/timeline";
+import { rootMotionProgress, type AnimEventsFile } from "../../src/sim/player/timeline";
 import { PLAYER_ACTION_ANIMS, timelinesFromEvents } from "../../src/sim/player/timelineFromEvents";
 
 const file = (animations: AnimEventsFile["animations"]): AnimEventsFile => ({ fps: 30, animations });
@@ -50,6 +50,29 @@ describe("timelinesFromEvents", () => {
     expect(timelines.roll?.iframes).toEqual({ start: 6, end: 32 }); // 기본 3~16을 ×2
   });
 
+  it("smooth 곡선: 천천히 출발 → 가속 → 천천히 정지 (시작/끝 기울기 0, 가운데 0.5)", () => {
+    const rm = { distance: 2, start: 0, end: 10, curve: "smooth" as const };
+    expect(rootMotionProgress(rm, 0)).toBe(0);
+    expect(rootMotionProgress(rm, 5)).toBeCloseTo(0.5, 9);
+    expect(rootMotionProgress(rm, 10)).toBe(1);
+    expect(rootMotionProgress(rm, 1)).toBeLessThan(0.1 * 0.5); // linear(0.1)보다 훨씬 느린 출발
+    expect(rootMotionProgress(rm, 9)).toBeGreaterThan(1 - 0.1 * 0.5);
+  });
+
+  it("이벤트 파일의 rootMotion이 있으면 그 구간/거리/곡선, 잘못되면 경고하고 기본값", () => {
+    const { timelines, warnings } = timelinesFromEvents(
+      file({
+        roll_f: { length: 28, events: [], rootMotion: { start: 3, end: 22, distance: 2.17, curve: "smooth" } },
+        backstep: { length: 13, events: [], rootMotion: { start: 5, end: 99, distance: 1.6, curve: "smooth" } },
+        attack_run: { length: 22, events: [], rootMotion: { start: 0, end: 15, distance: 2, curve: "wobble" } },
+      }),
+    );
+    expect(timelines.roll?.rootMotion).toEqual({ distance: 2.17, start: 6, end: 44, curve: "smooth" });
+    expect(warnings.some((w) => w.startsWith("backstep: rootMotion이 잘못됨"))).toBe(true);
+    expect(warnings.some((w) => w.startsWith("attack_run: rootMotion이 잘못됨"))).toBe(true);
+    expect(timelines.backstep?.rootMotion?.curve).toBe(PLAYER_TIMELINES.backstep.rootMotion?.curve); // 기본값
+  });
+
   it("hero.json: 모든 행동이 경고 없이 변환되고 구간이 길이 안에 있다", () => {
     const { timelines, warnings } = timelinesFromEvents(heroEvents as AnimEventsFile);
     expect(warnings).toEqual([]);
@@ -67,6 +90,8 @@ describe("timelinesFromEvents", () => {
     for (const a of ["attack_light_1", "attack_light_2", "attack_light_3", "attack_heavy", "attack_run"] as const) expect(timelines[a]?.hit, a).toBeDefined();
     expect(timelines.roll?.iframes).toBeDefined();
     expect(timelines.backstep?.iframes).toBeDefined();
-    expect(timelines.roll?.rootMotion?.distance).toBeCloseTo(2.17, 2);
+    expect(timelines.roll?.rootMotion).toMatchObject({ distance: 2.17, start: 6, end: 44, curve: "smooth" });
+    expect(timelines.roll?.cancel).toBe(48); // 24프레임 — 일어나는 동작 뒤
+    expect(timelines.backstep?.rootMotion).toMatchObject({ distance: 1.6, start: 0, end: 20, curve: "smooth" });
   });
 });

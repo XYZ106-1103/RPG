@@ -188,6 +188,13 @@
           ]
         },
         "distance": 2
+      },
+      "rootMotion": {
+        "start": 0,
+        "end": 15,
+        "distance": 2.0,
+        "curve": "smooth",
+        "note": "조정값 — 달리던 탄력으로 베기 (cancel 전까지)"
       }
     },
     "backstep": {
@@ -223,6 +230,13 @@
           ]
         },
         "distance": 1.6
+      },
+      "rootMotion": {
+        "start": 0,
+        "end": 10,
+        "distance": 1.6,
+        "curve": "smooth",
+        "note": "조정값 — 부드럽게 출발/정지 (예전: 앞 14틱에 몰아서 이동해 끊겨 보임)"
       }
     },
     "death": {
@@ -345,9 +359,9 @@
           "note": "추정값 (46%)"
         },
         {
-          "frame": 21,
+          "frame": 24,
           "name": "cancel_window",
-          "note": "추정값 (75%)"
+          "note": "조정값 (86%) — 75%면 일어나기 전에 달리기로 끊겨 85% 근처로 늦춤"
         }
       ],
       "source": {
@@ -358,6 +372,13 @@
           ]
         },
         "distance": 1.4
+      },
+      "rootMotion": {
+        "start": 3,
+        "end": 22,
+        "distance": 2.17,
+        "curve": "smooth",
+        "note": "조정값 — 웅크림(0~3) 뒤 땅에서 구르는 동안(3~22) 이동, 거리 = animations.json 1.4m × 키 배율 1.5474"
       }
     },
     "roll_f": {
@@ -380,9 +401,9 @@
           "note": "추정값 (46%)"
         },
         {
-          "frame": 21,
+          "frame": 24,
           "name": "cancel_window",
-          "note": "추정값 (75%)"
+          "note": "조정값 (86%) — 75%면 일어나기 전에 달리기로 끊겨 85% 근처로 늦춤"
         }
       ],
       "source": {
@@ -393,6 +414,13 @@
           ]
         },
         "distance": 1.4
+      },
+      "rootMotion": {
+        "start": 3,
+        "end": 22,
+        "distance": 2.17,
+        "curve": "smooth",
+        "note": "조정값 — 웅크림(0~3) 뒤 땅에서 구르는 동안(3~22) 이동, 거리 = animations.json 1.4m × 키 배율 1.5474"
       }
     },
     "run_f": {

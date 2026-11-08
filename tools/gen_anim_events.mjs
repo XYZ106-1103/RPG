@@ -9,7 +9,9 @@
  *
  * 길이: GLB 애니메이션 길이(초) × 30fps. 이벤트는 길이 비율로 추정하고 "note"에 "추정값 (NN%)"을 단다.
  *  - 공격: hit_start 35%, hit_end 55%, input_buffer_start 40%, cancel_window 70%, sfx:swing (hit_start 2프레임 전)
- *  - 구르기/백스텝: iframe_start 10%, iframe_end 45%, cancel_window 75%, sfx:roll (0프레임)
+ *  - 구르기/백스텝: iframe_start 10%, iframe_end 45%, cancel_window 85%, sfx:roll (0프레임)
+ *  - 루트 모션(rootMotion): animations.json에 distance가 있는 구르기/백스텝/달리기 공격 — 10%~80% 구간, smooth 곡선,
+ *    거리 = distance × --scale (모델 키를 바꿨으면 키 배율)
  *  - 이동: sfx:step_l / sfx:step_r — animations.json의 접지 프레임(contacts)이 있으면 그 값
  *  - 피격/사망/회복 등: sfx 자리 (animations.json에 같은 의미의 이벤트가 있으면 그 프레임)
  * animations.json의 작성자 값(hit, invulnerable 등)은 "source"에 남겨 표에서 비교한다.
@@ -37,7 +39,8 @@ const SFX_SLOTS = /** @type {Record<string, [string, string | null]>} */ ({
 
 /**
  * @typedef {{ frame: number, name: string, note: string }} EventEntry
- * @typedef {{ length: number, loop: boolean, source?: Record<string, unknown>, events: EventEntry[] }} AnimEntry
+ * @typedef {{ start: number, end: number, distance: number, curve: string, note: string }} RootMotionEntry
+ * @typedef {{ length: number, loop: boolean, source?: Record<string, unknown>, events: EventEntry[], rootMotion?: RootMotionEntry }} AnimEntry
  * @typedef {{ _설명: string, character: string, fps: number, animations: Record<string, AnimEntry> }} EventsFile
  */
 
@@ -89,7 +92,7 @@ export function estimateEvents(name, length, meta) {
       est(0, "sfx:roll", length, "구르기 시작 소리 자리"),
       est(is, "iframe_start", length),
       est(Math.max(is + 1, at(length, 0.45)), "iframe_end", length),
-      est(at(length, 0.75), "cancel_window", length),
+      est(at(length, 0.85), "cancel_window", length, "75%면 일어나기 전에 끊긴다"),
     ];
   }
   if (LOCOMOTION.includes(name)) {
@@ -117,9 +120,10 @@ export function estimateEvents(name, length, meta) {
  * @param {Record<string, Record<string, unknown>>} meta animations.json (원본 이름 기준)
  * @param {Record<string, string | null>} mapping 원본 이름 → 이름 규칙
  * @param {string} character
+ * @param {number} [scale] animations.json distance에 곱할 배율 (모델 키를 바꿨을 때)
  * @returns {EventsFile}
  */
-export function buildEventsFile(durations, meta, mapping, character) {
+export function buildEventsFile(durations, meta, mapping, character, scale = 1) {
   /** 이름 규칙 → animations.json 항목 */
   /** @type {Record<string, Record<string, unknown>>} */
   const metaByRule = {};
@@ -134,6 +138,15 @@ export function buildEventsFile(durations, meta, mapping, character) {
     const m = metaByRule[name] ?? {};
     /** @type {AnimEntry} */
     const entry = { length, loop: m.loop === true || LOCOMOTION.includes(name) || name === "idle", events: estimateEvents(name, length, m) };
+    if (typeof m.distance === "number" && (EVADES.includes(name) || name === "attack_run")) {
+      entry.rootMotion = {
+        start: at(length, 0.1),
+        end: at(length, 0.8),
+        distance: Math.round(m.distance * scale * 100) / 100,
+        curve: "smooth",
+        note: `추정값 (10%~80%) — animations.json distance ${m.distance}m × ${scale}`,
+      };
+    }
     if (m.events || m.distance !== undefined) entry.source = { ...(m.events ? { events: m.events } : {}), ...(m.distance !== undefined ? { distance: m.distance } : {}) };
     animations[name] = entry;
   }
@@ -156,6 +169,7 @@ export function formatTable(/** @type {EventsFile} */ file) {
     a.events.forEach((e, i) => {
       lines.push(`| ${i === 0 ? name : ""} | ${i === 0 ? a.length : ""} | \`${e.name}\` | ${e.frame} | ${pct(e.frame, a.length)} | ${e.note.replace(/^추정값 \(\d+%\)(?: — )?/, "추정값 ").trim()} |`);
     });
+    if (a.rootMotion) lines.push(`| | | \`rootMotion\` | ${a.rootMotion.start}→${a.rootMotion.end} | ${pct(a.rootMotion.start, a.length)}→${pct(a.rootMotion.end, a.length)} | ${a.rootMotion.distance}m ${a.rootMotion.curve} |`);
     if (a.source?.events) lines.push(`| | | _작성자 값_ | | | \`${JSON.stringify(a.source.events)}\` |`);
   }
   return lines.join("\n");
@@ -163,7 +177,14 @@ export function formatTable(/** @type {EventsFile} */ file) {
 
 async function main() {
   const { values } = parseArgs({
-    options: { name: { type: "string" }, glb: { type: "string" }, meta: { type: "string" }, force: { type: "boolean", default: false }, table: { type: "boolean", default: false } },
+    options: {
+      name: { type: "string" },
+      glb: { type: "string" },
+      meta: { type: "string" },
+      scale: { type: "string" },
+      force: { type: "boolean", default: false },
+      table: { type: "boolean", default: false },
+    },
   });
   const name = values.name;
   if (!name || !/^[a-z0-9_]+$/i.test(name)) {
@@ -186,7 +207,9 @@ async function main() {
   const mapPath = join(metaDir, "mapping.json");
   const meta = existsSync(metaPath) ? JSON.parse(await readFile(metaPath, "utf8")) : {};
   const mapping = existsSync(mapPath) ? JSON.parse(await readFile(mapPath, "utf8")) : {};
-  const file = buildEventsFile(durations, meta, mapping, name);
+  const scale = values.scale ? Number(values.scale) : 1;
+  if (!(scale > 0)) throw new Error(`--scale이 올바르지 않습니다: ${values.scale}`);
+  const file = buildEventsFile(durations, meta, mapping, name, scale);
   await mkdir(dirname(out), { recursive: true });
   await writeFile(out, JSON.stringify(file, null, 2) + "\n");
   console.log(`✓ ${out}  (애니메이션 ${Object.keys(file.animations).length}개)\n`);

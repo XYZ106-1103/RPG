@@ -15,9 +15,15 @@ describe("애니메이션 이벤트 추정", () => {
     expect(evs.map((e) => e.frame)).toEqual([...evs.map((e) => e.frame)].sort((a, b) => a - b));
   });
 
-  it("구르기: 무적 10~45%, 캔슬 75%", () => {
+  it("구르기: 무적 10~45%, 캔슬 85%", () => {
     const evs = estimateEvents("roll_f", 28, {});
-    expect([frameOf(evs, "iframe_start"), frameOf(evs, "iframe_end"), frameOf(evs, "cancel_window")]).toEqual([3, 13, 21]);
+    expect([frameOf(evs, "iframe_start"), frameOf(evs, "iframe_end"), frameOf(evs, "cancel_window")]).toEqual([3, 13, 24]);
+  });
+
+  it("루트 모션: distance가 있는 구르기/백스텝/달리기 공격만, 10~80% smooth, 거리 × 배율", () => {
+    const f = buildEventsFile({ roll_f: 0.9333, idle: 3 }, { Roll: { distance: 1.4 } }, { Roll: "roll_f" }, "hero", 1.5474);
+    expect(f.animations.roll_f?.rootMotion).toMatchObject({ start: 3, end: 22, distance: 2.17, curve: "smooth" });
+    expect(f.animations.idle?.rootMotion).toBeUndefined();
   });
 
   it("이동: animations.json 접지 프레임이 있으면 발소리에 그 값", () => {

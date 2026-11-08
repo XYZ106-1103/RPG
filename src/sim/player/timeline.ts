@@ -15,21 +15,26 @@ export interface TickWindow {
  * 루트 모션 (행동 중 캐릭터가 스스로 움직이는 거리).
  * 애니메이션이 들어오면 Hips 본 XZ 이동에서 추출한 곡선으로 교체한다 (TODO(에셋)).
  */
+export const ROOT_MOTION_CURVES = ["linear", "easeOut", "smooth"] as const;
+export type RootMotionCurve = (typeof ROOT_MOTION_CURVES)[number];
+
 export interface RootMotionSpec {
   /** 총 이동 거리 (m). 방향은 행동 방향(PlayerState.actionYaw) */
   distance: number;
   /** 이동 구간 [start, end) (틱) */
   start: number;
   end: number;
-  /** easeOut: 처음에 빠르고 끝에 느려짐 (구르기/찌르기) */
-  curve: "linear" | "easeOut";
+  /** easeOut: 처음에 빠르고 끝에 느려짐 / smooth: 천천히 출발해 가속 후 천천히 멈춤 (애니메이션 몸 이동과 잘 맞음) */
+  curve: RootMotionCurve;
 }
 
 /** tick 시점까지의 누적 진행도 (0~1) */
 export function rootMotionProgress(rm: Readonly<RootMotionSpec>, tick: number): number {
   const span = Math.max(1, rm.end - rm.start);
   const u = Math.min(1, Math.max(0, (tick - rm.start) / span));
-  return rm.curve === "easeOut" ? 1 - (1 - u) * (1 - u) : u;
+  if (rm.curve === "easeOut") return 1 - (1 - u) * (1 - u);
+  if (rm.curve === "smooth") return u * u * (3 - 2 * u);
+  return u;
 }
 
 /** tick-1 → tick 사이 이동 거리 (m). 진입 틱(0)에는 이전이 없으므로 0부터 센다 */
@@ -92,6 +97,8 @@ export interface AnimEventsFile {
       source?: unknown;
       /** note: "추정값 (35%)" 같은 사람용 주석 */
       events: { frame: number; name: AnimEventName | string; note?: string }[];
+      /** 루트 모션 (행동 중 캐릭터 이동): 프레임 구간 [start, end), 거리(m), 곡선. 없으면 기본 타임라인을 비율로 */
+      rootMotion?: { start: number; end: number; distance: number; curve: string; note?: string };
     }
   >;
 }

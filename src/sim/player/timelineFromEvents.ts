@@ -8,13 +8,13 @@
  *   iframe_start / _end   → iframes [start, end)
  *   input_buffer_start    → buffer [start, length)
  *   cancel_window         → cancel (없으면 길이 끝)
- * 이벤트에 없는 값(슈퍼아머, 효과 틱, 루트 모션 구간)은 기본 타임라인을 길이 비율로 늘이거나 줄여 쓴다.
- * 루트 모션 거리는 기본값(data/playerTimelines.ts) 그대로.
+ *   rootMotion (선택)     → 루트 모션 구간/거리/곡선 (애니메이션 몸 이동 타이밍에 맞춰 사람이 조정)
+ * 이벤트에 없는 값(슈퍼아머, 효과 틱, rootMotion이 없을 때의 루트 모션)은 기본 타임라인을 길이 비율로 늘이거나 줄여 쓴다.
  */
 import { PLAYER_ACTIONS, PLAYER_TIMELINES, type PlayerActionId, type PlayerTimelineTable } from "../data/playerTimelines";
 import { SIM_HZ } from "../time";
 import type { PlayerTimelineOverrides } from "./system";
-import type { ActionTimeline, AnimEventsFile, TickWindow } from "./timeline";
+import { ROOT_MOTION_CURVES, type ActionTimeline, type AnimEventsFile, type RootMotionCurve, type TickWindow } from "./timeline";
 
 /** sim 행동 → 애니메이션 이름 규칙 (sim의 구르기는 입력 방향으로 몸을 돌려 구르므로 roll_f 하나) */
 export const PLAYER_ACTION_ANIMS: Readonly<Record<PlayerActionId, string>> = {
@@ -89,7 +89,18 @@ export function timelinesFromEvents(file: Readonly<AnimEventsFile>, defaults: Pl
     const cancel = frameOf("cancel_window");
     t.cancel = cancel !== undefined ? Math.min(length, toTick(cancel)) : def.buffer ? Math.min(length, Math.round(def.cancel * k)) : length;
     if (def.effect !== undefined) t.effect = Math.min(length, Math.round(def.effect * k));
-    if (def.rootMotion) {
+    const rm = anim.rootMotion;
+    if (rm) {
+      const start = toTick(rm.start);
+      const end = toTick(rm.end);
+      const curve = (ROOT_MOTION_CURVES as readonly string[]).includes(rm.curve) ? (rm.curve as RootMotionCurve) : null;
+      if (!(start >= 0 && start < end && end <= length) || !(rm.distance >= 0) || !curve) {
+        warnings.push(`${action}: rootMotion이 잘못됨 (${rm.start}~${rm.end}프레임, ${rm.distance}m, ${rm.curve}) — 기본값 사용`);
+      } else {
+        t.rootMotion = { distance: rm.distance, start, end, curve };
+      }
+    }
+    if (!t.rootMotion && def.rootMotion) {
       const w = scaleWindow(def.rootMotion, k, length) ?? { start: 0, end: length };
       t.rootMotion = { ...def.rootMotion, start: w.start, end: w.end };
     }
