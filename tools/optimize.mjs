@@ -4,11 +4,12 @@
  * glTF/GLB 최적화: KTX2 텍스처 + meshopt 압축 (CLAUDE.md: 모든 GLB는 이 스크립트를 거친 뒤 public/assets/에 넣는다).
  *
  * 사용:
- *   node tools/optimize.mjs <입력.glb|.gltf> <출력.glb> [--max 2048] [--etc1s-quality 128] [--uastc-level 2] [--rdo 1] [--no-ktx2] [--no-meshopt]
+ *   node tools/optimize.mjs <입력.glb|.gltf> <출력.glb> [--max 2048] [--data-codec uastc|etc1s] [--etc1s-quality 128] [--uastc-level 2] [--rdo 1] [--no-ktx2] [--no-meshopt]
  *
  * 처리 순서: dedup(중복 제거) → prune(미사용 제거) → resample(애니메이션 키 정리) → [텍스처 리사이즈] → KTX2 → meshopt
  * 텍스처 방식 (쓰임새로 판별, lib/textureMode.mjs):
  *   노멀 → UASTC(노멀맵 모드, zstd), 베이스컬러/이미시브 → ETC1S(sRGB), ORM 등 데이터 → UASTC(선형, zstd)
+ * --data-codec: ORM 등 데이터 텍스처 방식 (기본 uastc, etc1s면 용량 약 1/8 — 지형 재질 B안과 같은 혼합 방식)
  * --rdo: UASTC RDO 강도 (기본 1, 0이면 끔) — 클수록 작아지고 화질이 떨어진다
  * 참고: UASTC는 디스크 용량이 JPG보다 클 수 있지만 GPU 메모리는 원본(RGBA)의 1/4 수준이다 (표의 GPU 열).
  * --max: 텍스처 긴 변 상한 (CLAUDE.md 예산: 플레이어/일반 적 2K, 소품 1K)
@@ -34,6 +35,7 @@ const { values, positionals } = parseArgs({
     "etc1s-quality": { type: "string" },
     "uastc-level": { type: "string" },
     rdo: { type: "string" },
+    "data-codec": { type: "string" },
     "no-ktx2": { type: "boolean", default: false },
     "no-meshopt": { type: "boolean", default: false },
   },
@@ -41,7 +43,7 @@ const { values, positionals } = parseArgs({
 
 const [input, output] = positionals;
 if (!input || !output || extname(output).toLowerCase() !== ".glb") {
-  console.error("사용: node tools/optimize.mjs <입력.glb|.gltf> <출력.glb> [--max 2048] [--etc1s-quality 128] [--uastc-level 2] [--rdo 1] [--no-ktx2] [--no-meshopt]");
+  console.error("사용: node tools/optimize.mjs <입력.glb|.gltf> <출력.glb> [--max 2048] [--data-codec uastc|etc1s] [--etc1s-quality 128] [--uastc-level 2] [--rdo 1] [--no-ktx2] [--no-meshopt]");
   process.exit(2);
 }
 
@@ -65,6 +67,8 @@ try {
   const etc1sQuality = intArg(values["etc1s-quality"], "etc1s-quality", 1, 255);
   const uastcLevel = intArg(values["uastc-level"], "uastc-level", 0, 3);
   const rdo = values.rdo === undefined ? undefined : Number(values.rdo);
+  const dataCodec = values["data-codec"] ?? "uastc";
+  if (dataCodec !== "uastc" && dataCodec !== "etc1s") throw new Error(`--data-codec는 uastc 또는 etc1s여야 합니다: ${dataCodec}`);
   if (rdo !== undefined && !(rdo >= 0 && rdo <= 10)) throw new Error(`--rdo는 0~10이어야 합니다: ${values.rdo}`);
   await MeshoptEncoder.ready;
   await MeshoptDecoder.ready;
@@ -91,7 +95,10 @@ try {
         rows.push({ name, slots: slots.join(","), mode: "(이미 KTX2)", size: "-", before: image.byteLength, after: image.byteLength, gpuBefore: 0, gpuAfter: 0 });
         continue;
       }
-      const { mode, conflict } = classifyTexture(slots);
+      const classified = classifyTexture(slots);
+      const conflict = classified.conflict;
+      /** @type {import("./lib/textureMode.mjs").TextureMode} */
+      const mode = classified.mode === "data" && dataCodec === "etc1s" ? "dataCompact" : classified.mode;
       if (conflict) console.warn(`⚠ ${name}: 여러 용도로 공유됨 [${slots.join(", ")}] → ${mode}로 압축`);
       /** @type {import("./lib/ktx2.mjs").KtxQuality} */
       const quality = {};
@@ -107,6 +114,11 @@ try {
       rows.push({ name, slots: slots.join(","), mode: modeLabel(mode), size: `${w}x${h}`, before: image.byteLength, after: ktx.byteLength, gpuBefore, gpuAfter });
     }
     if (any) doc.createExtension(KHRTextureBasisu).setRequired(true);
+    // 모두 KTX2로 바뀌었으면 원래 이미지 형식 확장(WebP/AVIF) 선언을 지운다 (필수 확장으로 남으면 로더가 거부할 수 있다)
+    const mimes = new Set(doc.getRoot().listTextures().map((t) => t.getMimeType()));
+    for (const ext of doc.getRoot().listExtensionsUsed()) {
+      if ((ext.extensionName === "EXT_texture_webp" && !mimes.has("image/webp")) || (ext.extensionName === "EXT_texture_avif" && !mimes.has("image/avif"))) ext.dispose();
+    }
   }
   if (!values["no-meshopt"]) await doc.transform(meshopt({ encoder: MeshoptEncoder, level: "medium" }));
 
