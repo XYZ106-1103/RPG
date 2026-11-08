@@ -3,8 +3,9 @@
  *
  * 무거운 기능은 모두 여기 값으로 켜고 끈다 (CLAUDE.md "품질 프리셋"). 각 기능은 자기가 쓰는 항목만 구독하고,
  * 프리셋이 바뀌면 그 항목 값이 실제로 달라졌을 때만 콜백을 받아 즉시 반영한다.
- *  - 지금 반영: 그림자(해상도/캐스케이드/필터/원거리 갱신/등불 그림자·갱신 간격), 렌더 스케일
- *  - 값만 있음 (기능을 만들 때 구독): SSAO, SSR, 볼류메트릭, 식생 밀도
+ *  - 지금 반영: 그림자(해상도/캐스케이드/필터/원거리 갱신/등불 그림자·갱신 간격), 렌더 스케일,
+ *    후처리(SSAO/SSR/볼류메트릭/TAA·FXAA/모션 블러/블룸/DOF — render/postfx)
+ *  - 값만 있음 (기능을 만들 때 구독): 식생 밀도
  */
 
 export const QUALITY_LEVELS = ["low", "medium", "high", "ultra"] as const;
@@ -33,8 +34,20 @@ export interface QualityPreset {
   /** 등불 그림자 갱신 간격 (프레임). 1 = 매 프레임 — 큐브맵 6면이라 2면 비용이 절반 */
   lanternShadowInterval: number;
   ssao: EffectQuality;
+  /** SSAO 계산 해상도 배율 (0.5 = 절반) */
+  ssaoRatio: number;
+  /** 반사할 젖은 면이 거의 없는 지역이 많아 Ultra 전용 */
   ssr: EffectQuality;
+  /** 등불 볼류메트릭 산란. samples는 그림자 반영 레이마칭용 예약값 (지금은 해석적 적분이라 샘플을 쓰지 않는다) */
   volumetric: EffectQuality;
+  /** 후처리를 쓰면 화면 MSAA가 적용되지 않으므로 항상 둘 중 하나 */
+  antiAliasing: "fxaa" | "taa";
+  /** 카메라 움직임 기준 모션 블러 (strength 0~1) */
+  motionBlur: EffectQuality & { strength: number };
+  /** kernel: 블룸 블러 크기, scale: 블룸 계산 해상도 배율 */
+  bloom: { enabled: boolean; kernel: number; scale: number };
+  /** blurLevel 0 낮음 ~ 2 높음. 전투 시야를 흐리지 않게 Ultra에만 약하게 */
+  dof: { enabled: boolean; blurLevel: 0 | 1 | 2 };
   /** 식생 밀도 배율 (0~1) */
   vegetationDensity: number;
   /** 렌더 해상도 배율 (1 = 화면 해상도) */
@@ -57,8 +70,13 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     lanternShadowMapSize: 256,
     lanternShadowInterval: 2,
     ssao: fx(false, 0),
+    ssaoRatio: 0.5,
     ssr: fx(false, 0),
     volumetric: fx(false, 0),
+    antiAliasing: "fxaa",
+    motionBlur: { enabled: false, samples: 0, strength: 0 },
+    bloom: { enabled: true, kernel: 32, scale: 0.25 },
+    dof: { enabled: false, blurLevel: 0 },
     vegetationDensity: 0.35,
     renderScale: 0.75,
   },
@@ -73,8 +91,13 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     lanternShadowMapSize: 256,
     lanternShadowInterval: 2,
     ssao: fx(true, 8),
+    ssaoRatio: 0.5,
     ssr: fx(false, 0),
     volumetric: fx(false, 0),
+    antiAliasing: "fxaa",
+    motionBlur: { enabled: false, samples: 0, strength: 0 },
+    bloom: { enabled: true, kernel: 48, scale: 0.5 },
+    dof: { enabled: false, blurLevel: 0 },
     vegetationDensity: 0.6,
     renderScale: 0.9,
   },
@@ -89,8 +112,13 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     lanternShadowMapSize: 512,
     lanternShadowInterval: 2,
     ssao: fx(true, 16),
-    ssr: fx(true, 16),
+    ssaoRatio: 0.5,
+    ssr: fx(false, 0),
     volumetric: fx(true, 32),
+    antiAliasing: "taa",
+    motionBlur: { enabled: true, samples: 16, strength: 0.35 },
+    bloom: { enabled: true, kernel: 64, scale: 0.5 },
+    dof: { enabled: false, blurLevel: 0 },
     vegetationDensity: 0.85,
     renderScale: 1,
   },
@@ -105,8 +133,13 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     lanternShadowMapSize: 1024,
     lanternShadowInterval: 1,
     ssao: fx(true, 32),
+    ssaoRatio: 1,
     ssr: fx(true, 32),
     volumetric: fx(true, 64),
+    antiAliasing: "taa",
+    motionBlur: { enabled: true, samples: 32, strength: 0.6 },
+    bloom: { enabled: true, kernel: 64, scale: 0.5 },
+    dof: { enabled: true, blurLevel: 0 },
     vegetationDensity: 1,
     renderScale: 1,
   },
