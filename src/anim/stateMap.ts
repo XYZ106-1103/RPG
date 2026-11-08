@@ -83,8 +83,18 @@ export const SIM_TO_ANIM: {
   death: "death",
 };
 
-/** 피격/패리 반응을 재생해도 되는 sim 상태 (행동 중에는 판정 궤적과 어긋나므로 재생하지 않는다) */
-export const REACTION_ALLOWED: ReadonlySet<PlayerStateId> = new Set<PlayerStateId>(["idle", "move", "sprint", "guard"]);
+export type ReactionId = "hit_front" | "hit_back" | "parry";
+
+/**
+ * 반응별로 재생해도 되는 sim 상태.
+ *  - hit_front/hit_back (sim hit 이벤트): 자유 상태에서만 — 공격/구르기 중에는 판정 궤적과 어긋나므로 재생하지 않는다
+ *  - parry (내 공격이 패리당함 → sim은 stagger / 벽에 튕김 → sim은 attack 유지): 튕겨 나는 반동 클립
+ */
+export const REACTION_ALLOWED: Readonly<Record<ReactionId, ReadonlySet<PlayerStateId>>> = {
+  hit_front: new Set<PlayerStateId>(["idle", "move", "sprint", "guard"]),
+  hit_back: new Set<PlayerStateId>(["idle", "move", "sprint", "guard"]),
+  parry: new Set<PlayerStateId>(["attack", "stagger"]),
+};
 
 export function resolveAnimState(state: PlayerStateId, action: PlayerActionId | null, lockedOn: boolean): AnimStateId {
   if (state === "attack") {

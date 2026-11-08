@@ -31,9 +31,12 @@ describe("sim 상태 → 애니메이션 상태 테이블", () => {
   });
 
   it("피격 반응은 행동 중(공격/구르기)에는 재생하지 않는다", () => {
-    expect(REACTION_ALLOWED.has("move")).toBe(true);
-    expect(REACTION_ALLOWED.has("attack")).toBe(false);
-    expect(REACTION_ALLOWED.has("roll")).toBe(false);
+    expect(REACTION_ALLOWED.hit_front.has("move")).toBe(true);
+    expect(REACTION_ALLOWED.hit_front.has("attack")).toBe(false);
+    expect(REACTION_ALLOWED.hit_back.has("roll")).toBe(false);
+    // 패리당하면 sim은 stagger, 벽 튕김은 attack 유지 — 둘 다 반동 클립
+    expect(REACTION_ALLOWED.parry.has("stagger")).toBe(true);
+    expect(REACTION_ALLOWED.parry.has("attack")).toBe(true);
   });
 });
 
