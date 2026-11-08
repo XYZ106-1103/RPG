@@ -2,7 +2,8 @@
  * 기본 조명: 태양이 꺼진 세계 (CLAUDE.md "렌더링 사양").
  *  - IBL: 밤하늘 HDR 환경맵(.env)을 아주 낮은 강도로 — 어둠 속 형태만 겨우 드러나게
  *  - 하늘: 같은 환경맵을 아주 어둡게 깐 배경 — 등불이 없어도 캐릭터 실루엣이 하늘에 비쳐 보인다
- *  - 태양: 꺼진 태양 느낌의 아주 약하고 차가운 방향광 (그림자는 shadows.ts의 CSM)
+ *  - 태양: 꺼진 태양의 잔광 — 약하고 차가운 방향광 (그림자는 shadows.ts의 CSM)
+ *    그림자가 보이려면 그림자가 생기지 않는 환경광(IBL)보다 직접광 비중이 커야 해서 태양 : IBL을 대략 3 : 1 이상으로 둔다
  *  - 등불: 플레이어 허리 본에 붙은 따뜻한 포인트 라이트, 미세한 깜빡임
  *  - 노출: ACES 톤매핑, 등불 기준(등불에서 2~3m 거리가 적정 밝기)으로 맞춤
  * 수치는 LightingSettings 한 곳에 있고 ?tune GUI가 직접 바꾼다 (매 프레임 update에서 반영).
@@ -42,11 +43,14 @@ export interface LightingSettings {
   contrast: number;
 }
 
+/** 기본값을 크게 바꾸면 올린다 — ?tune에 저장해 둔 예전 조명값을 버리고 새 기본값으로 시작 */
+export const LIGHTING_REVISION = 2;
+
 export const DEFAULT_LIGHTING: LightingSettings = {
-  iblIntensity: 0.05,
+  iblIntensity: 0.03,
   skyLevel: 0.05,
   skyBlur: 0.3,
-  sunIntensity: 0.18,
+  sunIntensity: 0.5,
   sunColor: { r: 0.55, g: 0.63, b: 0.82 },
   sunElevationDeg: 28,
   sunAzimuthDeg: 215,

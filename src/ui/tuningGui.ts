@@ -10,7 +10,7 @@ import type { CameraSettings } from "../gameplay/camera/thirdPersonCamera";
 import type { LockOnSettings } from "../gameplay/camera/lockOn";
 import type { ShakeSettings } from "../gameplay/camera/shake";
 import type { FeelSettings, ShakePreset } from "../gameplay/feel/feelSettings";
-import type { LightingSettings } from "../render/lighting";
+import { LIGHTING_REVISION, type LightingSettings } from "../render/lighting";
 import { QUALITY_LEVELS, type QualityManager } from "../render/quality";
 import type { ShadowSettings } from "../render/shadows";
 
@@ -30,6 +30,8 @@ export interface TuningTargets {
 }
 
 interface Snapshot {
+  /** 조명 기본값 개정 번호 — 다르면 저장된 조명값은 버린다 */
+  lightingRev: number;
   lighting: LightingSettings;
   shadows: ShadowSettings;
   feel: FeelSettings;
@@ -40,7 +42,7 @@ interface Snapshot {
 }
 
 function snapshot(t: TuningTargets): Snapshot {
-  return structuredClone({ lighting: t.lighting, shadows: t.shadows, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
+  return structuredClone({ lightingRev: LIGHTING_REVISION, lighting: t.lighting, shadows: t.shadows, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
 }
 
 /** 저장된 값을 대상 객체에 덮어쓴다 (키가 같은 숫자/불리언만 — 구조가 바뀌어도 안전하게) */
@@ -63,7 +65,7 @@ function load(t: TuningTargets): void {
     const saved: unknown = JSON.parse(raw);
     if (typeof saved !== "object" || saved === null) return;
     const s = saved as Partial<Record<keyof Snapshot, unknown>>;
-    assignKnown(t.lighting, s.lighting);
+    if (s.lightingRev === LIGHTING_REVISION) assignKnown(t.lighting, s.lighting);
     assignKnown(t.shadows, s.shadows);
     assignKnown(t.feel, s.feel);
     assignKnown(t.camera, s.camera);
