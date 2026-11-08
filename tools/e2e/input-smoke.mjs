@@ -42,7 +42,7 @@ try {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const loopStarted = page.waitForEvent("console", { predicate: (m) => m.text().includes("[loop]"), timeout: 30000 });
-  await page.goto(`${url}?engine=webgl2`);
+  await page.goto(`${url}?engine=webgl2&quality=low`); // 입력 검사라 그래픽은 가볍게 (소프트웨어 렌더링에서 High는 2fps)
   await loopStarted;
   await page.waitForTimeout(1500);
 

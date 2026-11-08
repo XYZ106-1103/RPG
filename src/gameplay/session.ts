@@ -5,7 +5,6 @@
  *  렌더 프레임:      이벤트 전달 → 메시 보간 → 카메라(스프링 암, 셰이크) → 락온 해제/전환 → 마커/패널
  */
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import type { PointLight } from "@babylonjs/core/Lights/pointLight";
 import type { Scene } from "@babylonjs/core/scene";
 import { CharacterAnimator } from "../anim/animator";
 import { HERO_PROFILE } from "../anim/characters/hero";
@@ -24,7 +23,10 @@ import { SweepDebugView } from "../physics/combat/sweepDebugView";
 import { PhysicsDebugView } from "../physics/debugView";
 import { PhysicsWorld } from "../physics/physicsWorld";
 import { createTestSceneColliders } from "../physics/testSceneColliders";
-import { LANTERN_INTENSITY, createTestScene } from "../render/testScene";
+import { Lighting } from "../render/lighting";
+import { QUALITY_STORAGE_KEY, QualityManager, initialQualityLevel } from "../render/quality";
+import { ShadowSystem } from "../render/shadows";
+import { createTestScene } from "../render/testScene";
 import type { AttackInstance } from "../sim/combat/types";
 import { PLAYER_TIMELINES } from "../sim/data/playerTimelines";
 import { isDead, isStaggered, type Entity, type EntityId } from "../sim/entity";
@@ -53,6 +55,13 @@ interface HeroModelParts {
   lib: ClipLibrary;
   tracks: Map<string, SocketTrack>;
   weapon: ReturnType<typeof attachWeapon>;
+}
+
+/** 렌더 시스템 (품질 프리셋, 조명, 그림자) */
+export interface RenderSystems {
+  quality: QualityManager;
+  lighting: Lighting;
+  shadows: ShadowSystem;
 }
 
 export interface SessionOptions {
@@ -130,7 +139,7 @@ export class GameSession {
     readonly sim: SimWorld,
     readonly camera: ThirdPersonCamera,
     readonly lockOn: LockOnSystem,
-    private readonly lantern: PointLight,
+    readonly gfx: RenderSystems,
     private readonly input: InputManager,
     canvas: HTMLCanvasElement,
     private readonly options: SessionOptions,
@@ -145,11 +154,7 @@ export class GameSession {
     }
     const heroView = this.viewFor(hero);
     // 등불: 모델이 있으면 리그의 Lantern 본에, 없으면 캡슐 허리에
-    const lanternBone = heroModel?.model.node(HERO_PROFILE.lanternBone) ?? null;
-    if (lanternBone) {
-      lantern.parent = lanternBone;
-      lantern.position.setAll(0);
-    } else lantern.parent = heroView.body;
+    gfx.lighting.attachLantern(heroModel?.model.node(HERO_PROFILE.lanternBone) ?? null, heroView.body);
     // 피격/패리 반응 애니메이션 (sim 이벤트)
     const react = (id: EntityId, r: "hit_front" | "hit_back" | "parry"): void => {
       const v = this.views.get(id);
@@ -179,10 +184,29 @@ export class GameSession {
   }
 
   static async create(engine: AbstractEngine, canvas: HTMLCanvasElement, input: InputManager, options: SessionOptions): Promise<GameSession> {
-    const { scene, lantern } = createTestScene(engine);
+    const { scene, ground } = createTestScene(engine);
+    // 품질 프리셋 (URL ?quality= > 저장값 > High) → 조명 → (카메라 뒤) 그림자
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(QUALITY_STORAGE_KEY);
+    } catch {
+      // 저장소를 못 쓰면 기본값
+    }
+    const quality = new QualityManager(initialQualityLevel(window.location.search, stored));
+    quality.subscribe(null, (p) => {
+      try {
+        window.localStorage.setItem(QUALITY_STORAGE_KEY, p.level);
+      } catch {
+        // 무시
+      }
+    });
+    quality.subscribe(["renderScale"], (p) => engine.setHardwareScalingLevel(1 / p.renderScale));
+    const lighting = new Lighting(scene);
+    await lighting.loadEnvironment(`${import.meta.env.BASE_URL}assets/hdri/night_overcast.env`);
     // 물리 → 캐릭터 컨트롤러(이동 포트) → 무기 스윕(HitQuery) → sim
     const physics = await PhysicsWorld.create(scene);
     createTestSceneColliders(physics, scene);
+    const environment = scene.meshes.filter((m) => m !== lighting.sky && m !== ground);
     const characters = new CharacterSystem(physics);
     // 애니메이션 이벤트 → 행동 타임라인, 캐릭터 모델 → 무기 소켓 궤적 (sim 생성 전에 끝낸다)
     const timelineOverrides = await animEventsTimelineLoader.load(HERO_PROFILE.name);
@@ -193,10 +217,14 @@ export class GameSession {
     const hero = sim.spawnPlayer({ x: 0, y: 0, z: 0 }, 0);
     const camera = new ThirdPersonCamera(scene, new SpringArmProbe(physics));
     camera.snapTo(0);
+    const shadows = new ShadowSystem(scene, lighting.sun, lighting.lantern, quality, camera.camera);
+    // 정적 환경: 그림자를 드리우고 받는다 (바닥은 받기만). TODO(월드): 청크 로드/해제 때 addCaster/해제 함수로
+    shadows.addCaster(environment);
+    shadows.addReceiver([ground, ...environment]);
     // 락온 위치 조회는 렌더 보간 위치 (화면에 보이는 위치)
     let session: GameSession | null = null;
     const lockOn = new LockOnSystem(scene, camera.camera, physics, sim, hero.id, (id) => session?.views.get(id)?.display.position ?? sim.get(id)?.position ?? null);
-    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, lantern, input, canvas, options, hero, heroModel);
+    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, { quality, lighting, shadows }, input, canvas, options, hero, heroModel);
     return session;
   }
 
@@ -249,7 +277,8 @@ export class GameSession {
     this.sweepDebug.update();
     this.hitFeedback.update(dt);
     // freeze()된 재질에는 setEnabled 변화가 반영되지 않으므로 intensity로 끈다 (testScene.ts 참고)
-    this.lantern.intensity = this.lanternOn ? LANTERN_INTENSITY : 0;
+    this.gfx.lighting.update(dt, this.lanternOn);
+    this.gfx.shadows.update();
 
     this.updatePanel();
     this.lockHint.update({ pointerLocked: this.input.isPointerLocked, failed: this.input.pointerLockFailed, usingGamepad: this.input.activeDevice === "gamepad" });
@@ -283,6 +312,15 @@ export class GameSession {
             )
           : new CharacterView(this.scene, this.materials, e);
       this.views.set(e.id, v);
+      // 캐릭터 그림자: 모델은 LOD0 + 무기만 드리우고(LOD1/2는 같은 자리라 중복) 모든 LOD가 받는다. dispose되면 자동 해제
+      if (v instanceof ModelCharacterView) {
+        const lod0 = v.model.meshes.filter((m) => m.name.endsWith("_LOD0"));
+        this.gfx.shadows.addCaster(v.weaponMesh ? [...lod0, v.weaponMesh] : lod0);
+        this.gfx.shadows.addReceiver(v.model.meshes);
+      } else {
+        this.gfx.shadows.addCaster([v.body, v.nose, v.weapon]);
+        this.gfx.shadows.addReceiver([v.body, v.nose, v.weapon]);
+      }
     }
     return v;
   }
@@ -343,6 +381,7 @@ export class GameSession {
       `접지     ${this.characters.get(h.id)?.groundState ?? "-"}  트리거 ${this.inTrigger ? "안" : "밖"}`,
       `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}`,
       this.animLine(),
+      `그림자   ${this.gfx.shadows.describe()}`,
       `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}  카메라 ${((this.camera.viewYaw * 180) / Math.PI).toFixed(0)}°`,
       "",
       ...this.eventLog,

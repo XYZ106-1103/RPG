@@ -48,6 +48,9 @@ async function main(): Promise<void> {
       lockOn: session.lockOn.controller.settings,
       input: { mouseSensitivity: inputSettings.mouseSensitivity, gamepadLookSpeed: inputSettings.gamepadLookSpeed, invertY: inputSettings.invertY },
       applyInput: (patch) => input.updateSettings(patch),
+      quality: session.gfx.quality,
+      lighting: session.gfx.lighting.settings,
+      shadows: session.gfx.shadows.settings,
     });
   }
 

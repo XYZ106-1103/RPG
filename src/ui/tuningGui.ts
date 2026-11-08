@@ -1,6 +1,6 @@
 /**
  * 수치 실시간 조정 GUI (개발용, ?tune 일 때만 동적 임포트 — 기본 번들에 들어가지 않는다).
- * lil-gui (MIT). 타격감/카메라/락온/입력 감도 값을 슬라이더로 바꾸면 바로 반영된다.
+ * lil-gui (MIT). 품질 프리셋, 조명, 그림자 바이어스, 타격감/카메라/락온/입력 감도 값을 슬라이더로 바꾸면 바로 반영된다.
  *
  * - 바꾼 값은 이 브라우저의 localStorage에 저장되어 새로고침해도 유지된다 (다른 사람/기기와는 공유되지 않음).
  * - "JSON 복사"로 현재 값을 복사해 코드의 기본값(feelSettings.ts 등)에 옮겨 적는다.
@@ -10,6 +10,9 @@ import type { CameraSettings } from "../gameplay/camera/thirdPersonCamera";
 import type { LockOnSettings } from "../gameplay/camera/lockOn";
 import type { ShakeSettings } from "../gameplay/camera/shake";
 import type { FeelSettings, ShakePreset } from "../gameplay/feel/feelSettings";
+import type { LightingSettings } from "../render/lighting";
+import { QUALITY_LEVELS, type QualityManager } from "../render/quality";
+import type { ShadowSettings } from "../render/shadows";
 
 const STORAGE_KEY = "ashen-lantern.tuning.v1";
 
@@ -21,9 +24,14 @@ export interface TuningTargets {
   /** 입력 설정 (InputManager.updateSettings로 반영) */
   input: { mouseSensitivity: number; gamepadLookSpeed: number; invertY: boolean };
   applyInput: (patch: TuningTargets["input"]) => void;
+  quality: QualityManager;
+  lighting: LightingSettings;
+  shadows: ShadowSettings;
 }
 
 interface Snapshot {
+  lighting: LightingSettings;
+  shadows: ShadowSettings;
   feel: FeelSettings;
   camera: CameraSettings;
   shake: ShakeSettings;
@@ -32,7 +40,7 @@ interface Snapshot {
 }
 
 function snapshot(t: TuningTargets): Snapshot {
-  return structuredClone({ feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
+  return structuredClone({ lighting: t.lighting, shadows: t.shadows, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
 }
 
 /** 저장된 값을 대상 객체에 덮어쓴다 (키가 같은 숫자/불리언만 — 구조가 바뀌어도 안전하게) */
@@ -55,6 +63,8 @@ function load(t: TuningTargets): void {
     const saved: unknown = JSON.parse(raw);
     if (typeof saved !== "object" || saved === null) return;
     const s = saved as Partial<Record<keyof Snapshot, unknown>>;
+    assignKnown(t.lighting, s.lighting);
+    assignKnown(t.shadows, s.shadows);
     assignKnown(t.feel, s.feel);
     assignKnown(t.camera, s.camera);
     assignKnown(t.shake, s.shake);
@@ -82,6 +92,47 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
   gui.domElement.style.zIndex = "20";
   const onChange = (): void => save(t);
   gui.onChange(onChange);
+
+  // 품질 프리셋 (바꾸면 그림자/렌더 스케일 등이 즉시 반영, 선택은 브라우저에 저장)
+  const q = { level: t.quality.level };
+  gui
+    .add(q, "level", [...QUALITY_LEVELS])
+    .name("품질 프리셋")
+    .onChange((v: string) => {
+      const lv = QUALITY_LEVELS.find((l) => l === v);
+      if (lv) t.quality.setLevel(lv);
+    });
+
+  const L = t.lighting;
+  const lf = gui.addFolder("조명");
+  lf.add(L, "exposure", 0.2, 4, 0.01).name("노출");
+  lf.add(L, "contrast", 0.5, 2, 0.01).name("대비");
+  lf.add(L, "lanternIntensity", 0, 20, 0.1).name("등불 강도");
+  lf.add(L, "lanternRange", 2, 40, 0.5).name("등불 범위 (m)");
+  lf.add(L, "lanternFlicker", 0, 0.2, 0.005).name("등불 깜빡임");
+  lf.addColor(L, "lanternColor").name("등불 색");
+  lf.add(L, "iblIntensity", 0, 0.5, 0.005).name("환경광(IBL)");
+  lf.add(L, "skyLevel", 0, 0.5, 0.005).name("하늘 밝기");
+  lf.add(L, "sunIntensity", 0, 2, 0.01).name("태양 강도");
+  lf.addColor(L, "sunColor").name("태양 색");
+  lf.add(L, "sunElevationDeg", 2, 89, 1).name("태양 고도 (도)");
+  lf.add(L, "sunAzimuthDeg", 0, 360, 1).name("태양 방위 (도)");
+  lf.close();
+
+  const S = t.shadows;
+  const sf = gui.addFolder("그림자 (바이어스)");
+  sf.add(S, "sunBias", 0, 0.02, 0.0001).name("태양 bias (아크네↓)");
+  sf.add(S, "sunNormalBias", 0, 0.2, 0.001).name("태양 normalBias");
+  sf.add(S, "pcssLightSize", 0.001, 0.1, 0.001).name("PCSS 광원 크기");
+  sf.add(S, "cascadeBlend", 0, 0.5, 0.01).name("캐스케이드 블렌딩");
+  sf.add(S, "lambda", 0, 1, 0.01).name("캐스케이드 분할 λ");
+  sf.add(S, "shadowMaxZ", 10, 300, 1).name("그림자 거리 (m)");
+  sf.add(S, "darkness", 0, 1, 0.01).name("그림자 밝기");
+  sf.add(S, "farIntervalOverride", 0, 8, 1).name("원거리 갱신 N (0=프리셋)");
+  sf.add(S, "lanternBias", 0, 0.05, 0.0005).name("등불 bias");
+  sf.add(S, "lanternNormalBias", 0, 0.2, 0.001).name("등불 normalBias");
+  sf.add(S, "lanternDarkness", 0, 1, 0.01).name("등불 그림자 밝기");
+  sf.close();
 
   const f = t.feel;
   const hs = gui.addFolder("히트스톱");
@@ -172,6 +223,8 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
   gui.add(
     {
       reset: () => {
+        assignKnown(t.lighting, defaults.lighting);
+        assignKnown(t.shadows, defaults.shadows);
         assignKnown(t.feel, defaults.feel);
         assignKnown(t.camera, defaults.camera);
         assignKnown(t.shake, defaults.shake);
