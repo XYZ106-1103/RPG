@@ -2,7 +2,8 @@
  * 그림자: 태양 CascadedShadowGenerator + 등불(포인트 라이트) 큐브맵 그림자, 품질 프리셋 구독.
  *
  * 태양 (CSM)
- *  - 캐스케이드 수/해상도/필터(PCSS·PCF)는 프리셋, 경계 블렌딩·안정화(카메라가 움직여도 그림자가 떨리지 않게)
+ *  - 캐스케이드 수/해상도/필터(PCF Low~High, PCSS Ultra)는 프리셋, 경계 블렌딩·안정화(카메라가 움직여도 그림자가 떨리지 않게)
+ *  - 필터는 비교용으로 강제할 수 있다 (filterOverride — 디버그 F4 / ?tune, 저장하지 않음)
  *  - 원거리 캐스케이드(3, 4번)는 N프레임마다, 근거리는 매 프레임 갱신 (cascadeSchedule.ts)
  *    Babylon에 없는 기능이라 내부를 감싼다: 갱신하지 않는 캐스케이드는 (1) 투영 행렬을 직전 값으로 되돌리고
  *    (2) 그 층을 지우지도 그리지도 않아 직전 깊이를 그대로 쓴다. 내부 구조가 예상과 다르면(버전 변경)
@@ -32,7 +33,7 @@ import type { Node } from "@babylonjs/core/node";
 import type { Scene } from "@babylonjs/core/scene";
 import { cascadeUpdates } from "./cascadeSchedule";
 import { sphereInCubeFace, sphereWithinRange } from "./lanternCulling";
-import type { QualityManager, QualityPreset } from "./quality";
+import { nextShadowFilterOverride, resolveShadowFilter, type QualityManager, type QualityPreset, type ShadowFilterOverride } from "./quality";
 
 export interface ShadowSettings {
   /** 태양 그림자 바이어스 — 키우면 그림자 여드름(아크네)이 줄고, 너무 크면 그림자가 떠 보인다(피터패닝) */
@@ -139,6 +140,7 @@ export class ShadowSystem {
   private hookedLanternMap: RenderTargetTexture | null = null;
   /** 마지막으로 Babylon에 넣은 조정값 (바뀔 때만 다시 넣는다) */
   private applied: ShadowSettings | null = null;
+  private filterOverrideValue: ShadowFilterOverride = "preset";
 
   constructor(
     private readonly scene: Scene,
@@ -290,6 +292,28 @@ export class ShadowSystem {
     this.stats.lanternFaceDraws = draws;
   }
 
+  /** 태양 그림자 필터 강제 (비교용, 저장하지 않음). 바꾸면 즉시 반영 */
+  get filterOverride(): ShadowFilterOverride {
+    return this.filterOverrideValue;
+  }
+
+  set filterOverride(v: ShadowFilterOverride) {
+    if (v === this.filterOverrideValue) return;
+    this.filterOverrideValue = v;
+    this.applyFilter();
+  }
+
+  /** F4: 프리셋 → PCF 강제 → PCSS 강제 → 프리셋 */
+  cycleFilterOverride(): ShadowFilterOverride {
+    this.filterOverride = nextShadowFilterOverride(this.filterOverrideValue);
+    return this.filterOverrideValue;
+  }
+
+  /** 지금 실제로 쓰는 태양 그림자 필터 */
+  get activeFilter(): QualityPreset["shadowFilter"] {
+    return resolveShadowFilter(this.preset, this.filterOverrideValue);
+  }
+
   /** 디버그 패널 한 줄 */
   describe(): string {
     const s = this.settings;
@@ -299,7 +323,8 @@ export class ShadowSystem {
       ? `등불 ${this.preset.lanternShadowMapSize} 1/${this.preset.lanternShadowInterval} 면당 ${(st.lanternFaceDraws / 6).toFixed(1)}/${st.lanternCandidates}`
       : "등불 끔";
     const per = this.stats.perCascadeUpdate ? `원거리 1/${interval}` : "원거리 매프레임(대체)";
-    return `${this.preset.level} ${this.sun.mapSize}×${this.sun.numCascades} ${this.preset.shadowFilter.toUpperCase()} ${per} bias ${s.sunBias.toFixed(4)}/${s.sunNormalBias.toFixed(3)} ${lantern} 캐스터 ${this.casters.size}`;
+    const forced = this.filterOverrideValue === "preset" ? "" : ` [F4: ${this.filterOverrideValue.toUpperCase()} 강제]`;
+    return `${this.preset.level} ${this.sun.mapSize}×${this.sun.numCascades} ${this.activeFilter.toUpperCase()} ${this.preset.shadowFilterQuality}${forced} ${per} bias ${s.sunBias.toFixed(4)}/${s.sunNormalBias.toFixed(3)} ${lantern} 캐스터 ${this.casters.size}`;
   }
 
   dispose(): void {
@@ -315,8 +340,7 @@ export class ShadowSystem {
     const g = this.sun;
     if (g.numCascades !== p.shadowCascades) g.numCascades = p.shadowCascades;
     if (g.mapSize !== p.shadowMapSize) g.mapSize = p.shadowMapSize;
-    g.filter = p.shadowFilter === "pcss" ? ShadowGenerator.FILTER_PCSS : ShadowGenerator.FILTER_PCF;
-    g.filteringQuality = p.shadowFilterQuality === "high" ? ShadowGenerator.QUALITY_HIGH : p.shadowFilterQuality === "medium" ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW;
+    this.applyFilter();
     // 캐스케이드 구성이 바뀌면 저장해 둔 행렬은 무효 — 다음 프레임은 전부 새로 계산/렌더
     this.snaps.length = 0;
     this.stats.cascadeRenders = new Array<number>(p.shadowCascades).fill(0);
@@ -339,6 +363,16 @@ export class ShadowSystem {
       this.lanternGen = null;
       this.hookedLanternMap = null;
     }
+  }
+
+  /** 필터(프리셋 또는 강제)와 품질 단계를 태양 그림자에 넣는다 — 바뀔 때만 (세터가 재질을 다시 검사하게 만든다) */
+  private applyFilter(): void {
+    const g = this.sun;
+    const p = this.preset;
+    const filter = this.activeFilter === "pcss" ? ShadowGenerator.FILTER_PCSS : ShadowGenerator.FILTER_PCF;
+    const q = p.shadowFilterQuality === "high" ? ShadowGenerator.QUALITY_HIGH : p.shadowFilterQuality === "medium" ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW;
+    if (g.filter !== filter) g.filter = filter;
+    if (g.filteringQuality !== q) g.filteringQuality = q;
   }
 
   private isFrozen(layer: number): boolean {

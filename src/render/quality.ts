@@ -22,7 +22,7 @@ export interface QualityPreset {
   shadowMapSize: number;
   /** 태양 그림자 캐스케이드 수 (2~4) */
   shadowCascades: number;
-  /** pcf: 가벼운 부드러운 그림자 / pcss: 접촉점은 선명하고 멀어질수록 퍼지는 그림자 */
+  /** pcf: 가벼운 부드러운 그림자 / pcss: 접촉점은 선명하고 멀어질수록 퍼지는 그림자 (비싸다 — Ultra만) */
   shadowFilter: "pcf" | "pcss";
   shadowFilterQuality: "low" | "medium" | "high";
   /** 원거리 캐스케이드(3, 4번) 갱신 간격 (프레임). 1 = 매 프레임 */
@@ -66,7 +66,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     level: "medium",
     shadowMapSize: 2048,
     shadowCascades: 3,
-    shadowFilter: "pcss",
+    shadowFilter: "pcf",
     shadowFilterQuality: "medium",
     farCascadeInterval: 3,
     lanternShadow: false,
@@ -82,8 +82,8 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     level: "high",
     shadowMapSize: 2048,
     shadowCascades: 4,
-    shadowFilter: "pcss",
-    shadowFilterQuality: "medium",
+    shadowFilter: "pcf",
+    shadowFilterQuality: "high",
     farCascadeInterval: 2,
     lanternShadow: true,
     lanternShadowMapSize: 512,
@@ -111,6 +111,21 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     renderScale: 1,
   },
 };
+
+/** 태양 그림자 필터 비교용 강제 설정 (디버그 F4 / ?tune) — "preset"이면 프리셋 값 */
+export const SHADOW_FILTER_OVERRIDES = ["preset", "pcf", "pcss"] as const;
+export type ShadowFilterOverride = (typeof SHADOW_FILTER_OVERRIDES)[number];
+
+/** 실제로 쓸 필터: 강제 설정이 있으면 그것, 없으면 프리셋 (품질 단계는 항상 프리셋) */
+export function resolveShadowFilter(preset: Readonly<QualityPreset>, override: ShadowFilterOverride): QualityPreset["shadowFilter"] {
+  return override === "preset" ? preset.shadowFilter : override;
+}
+
+/** F4 순환: 프리셋 → PCF 강제 → PCSS 강제 → 프리셋 */
+export function nextShadowFilterOverride(cur: ShadowFilterOverride): ShadowFilterOverride {
+  const i = SHADOW_FILTER_OVERRIDES.indexOf(cur);
+  return SHADOW_FILTER_OVERRIDES[(i + 1) % SHADOW_FILTER_OVERRIDES.length] ?? "preset";
+}
 
 export const DEFAULT_QUALITY: QualityLevel = "high";
 export const QUALITY_STORAGE_KEY = "ashen-lantern.quality.v1";

@@ -171,6 +171,8 @@ export class GameSession {
     this.sweepDebug = new SweepDebugView(scene, hitQuery);
     this.setDebug(options.physicsDebugOnStart);
     bindDebugKey("F3", () => this.setDebug(!this.physicsDebug.enabled));
+    // F4: 태양 그림자 필터 비교 (프리셋 → PCF 강제 → PCSS 강제)
+    bindDebugKey("F4", () => gfx.shadows.cycleFilterOverride());
 
     physics.onTriggerEnter.add((e) => {
       if (e.other === characters.bodyOf(hero.id)) this.inTrigger = true;
@@ -389,7 +391,7 @@ export class GameSession {
       `스태미나 ${textBar(h.stamina / h.maxStamina)} ${h.stamina.toFixed(0)}`,
       `락온     ${lockEntity ? `#${lockEntity.id} ${lockEntity.archetype} (${lockEntity.health.toFixed(0)})` : "-"}${!lockEntity && release ? `  해제: ${release}` : ""}`,
       `접지     ${this.characters.get(h.id)?.groundState ?? "-"}  트리거 ${this.inTrigger ? "안" : "밖"}`,
-      `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}`,
+      `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}  F4 그림자 필터 비교`,
       this.animLine(),
       `그림자   ${this.gfx.shadows.describe()}`,
       `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}  카메라 ${((this.camera.viewYaw * 180) / Math.PI).toFixed(0)}°`,

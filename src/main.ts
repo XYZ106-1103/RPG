@@ -12,6 +12,7 @@ import { InputDebugOverlay } from "./ui/inputDebug";
  *  - ?inputdebug       입력 디버그 오버레이 표시
  *  - ?physicsdebug     물리 디버그 뷰(충돌 셰이프 + 무기 궤적)를 켠 상태로 시작 (F3으로 토글)
  *  - ?tune             타격감/카메라/락온/입력 수치 조정 GUI (lil-gui, 이때만 불러온다)
+ *  - ?quality=low|medium|high|ultra  품질 프리셋 (F4: 태양 그림자 필터 PCF/PCSS 비교 전환)
  */
 const params = new URLSearchParams(window.location.search);
 const SIM_HZ = Math.min(240, Math.max(1, Number(params.get("simhz")) || SIM_DEFAULT_HZ));
@@ -51,6 +52,12 @@ async function main(): Promise<void> {
       quality: session.gfx.quality,
       lighting: session.gfx.lighting.settings,
       shadows: session.gfx.shadows.settings,
+      shadowFilter: {
+        get: () => session.gfx.shadows.filterOverride,
+        set: (v) => {
+          session.gfx.shadows.filterOverride = v;
+        },
+      },
     });
   }
 

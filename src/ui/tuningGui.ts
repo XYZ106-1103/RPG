@@ -11,7 +11,7 @@ import type { LockOnSettings } from "../gameplay/camera/lockOn";
 import type { ShakeSettings } from "../gameplay/camera/shake";
 import type { FeelSettings, ShakePreset } from "../gameplay/feel/feelSettings";
 import { LIGHTING_REVISION, type LightingSettings } from "../render/lighting";
-import { QUALITY_LEVELS, type QualityManager } from "../render/quality";
+import { QUALITY_LEVELS, SHADOW_FILTER_OVERRIDES, type QualityManager, type ShadowFilterOverride } from "../render/quality";
 import type { ShadowSettings } from "../render/shadows";
 
 const STORAGE_KEY = "ashen-lantern.tuning.v1";
@@ -27,6 +27,8 @@ export interface TuningTargets {
   quality: QualityManager;
   lighting: LightingSettings;
   shadows: ShadowSettings;
+  /** 태양 그림자 필터 강제 (비교용, 저장하지 않음 — 디버그 F4와 같은 값) */
+  shadowFilter: { get(): ShadowFilterOverride; set(v: ShadowFilterOverride): void };
 }
 
 interface Snapshot {
@@ -123,6 +125,16 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
 
   const S = t.shadows;
   const sf = gui.addFolder("그림자 (바이어스)");
+  // 필터 비교: F4로 바꿔도 여기 표시가 따라간다 (listen). 저장하지 않는다
+  const filterProxy = {
+    get filter(): ShadowFilterOverride {
+      return t.shadowFilter.get();
+    },
+    set filter(v: ShadowFilterOverride) {
+      t.shadowFilter.set(v);
+    },
+  };
+  sf.add(filterProxy, "filter", [...SHADOW_FILTER_OVERRIDES]).name("태양 필터 (F4, 비교용)").listen();
   sf.add(S, "sunBias", 0, 0.02, 0.0001).name("태양 bias (아크네↓)");
   sf.add(S, "sunNormalBias", 0, 0.2, 0.001).name("태양 normalBias");
   sf.add(S, "pcssLightSize", 0.001, 0.1, 0.001).name("PCSS 광원 크기");

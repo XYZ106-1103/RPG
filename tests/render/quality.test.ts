@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cascadeUpdates } from "../../src/render/cascadeSchedule";
 import { lanternFlicker } from "../../src/render/lanternFlicker";
-import { QUALITY_LEVELS, QUALITY_PRESETS, QualityManager, initialQualityLevel, type QualityPreset } from "../../src/render/quality";
+import { QUALITY_LEVELS, QUALITY_PRESETS, QualityManager, initialQualityLevel, nextShadowFilterOverride, resolveShadowFilter, type QualityPreset } from "../../src/render/quality";
 
 describe("품질 프리셋", () => {
   it("Low → Ultra로 갈수록 그림자/효과가 같거나 좋아진다", () => {
@@ -19,6 +19,25 @@ describe("품질 프리셋", () => {
     }
     for (const p of order) expect(p.shadowCascades).toBeGreaterThanOrEqual(2);
     expect(QUALITY_PRESETS.ultra.shadowCascades).toBe(4);
+  });
+
+  it("태양 그림자 필터: Low~High는 PCF(저·중·고), Ultra만 PCSS", () => {
+    expect(QUALITY_LEVELS.map((l) => `${QUALITY_PRESETS[l].shadowFilter}/${QUALITY_PRESETS[l].shadowFilterQuality}`)).toEqual([
+      "pcf/low",
+      "pcf/medium",
+      "pcf/high",
+      "pcss/high",
+    ]);
+  });
+
+  it("필터 강제(F4): 프리셋 → PCF → PCSS → 프리셋 순환, 강제하면 프리셋과 무관", () => {
+    expect(nextShadowFilterOverride("preset")).toBe("pcf");
+    expect(nextShadowFilterOverride("pcf")).toBe("pcss");
+    expect(nextShadowFilterOverride("pcss")).toBe("preset");
+    expect(resolveShadowFilter(QUALITY_PRESETS.high, "preset")).toBe("pcf");
+    expect(resolveShadowFilter(QUALITY_PRESETS.high, "pcss")).toBe("pcss");
+    expect(resolveShadowFilter(QUALITY_PRESETS.ultra, "preset")).toBe("pcss");
+    expect(resolveShadowFilter(QUALITY_PRESETS.ultra, "pcf")).toBe("pcf");
   });
 
   it("등불 그림자는 High 이상에서만", () => {
