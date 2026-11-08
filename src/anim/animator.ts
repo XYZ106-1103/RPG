@@ -1,7 +1,7 @@
 /**
  * 캐릭터 애니메이터: sim 상태 → 애니메이션 상태(stateMap) → 크로스페이드(mixer) → 블렌드 트리 → AnimationGroup 가중치.
  *
- * 시간은 Babylon 애니메이션 시계를 쓰지 않고 직접 정한다 (그룹은 속도 0으로 재생하고 매 프레임 goToFrame):
+ * 시간은 Babylon 애니메이션 시계를 쓰지 않고 직접 정한다 (그룹은 시작 후 일시정지, 매 프레임 가중치를 실은 goToFrame):
  *  - 행동 클립(공격/구르기 등): sim 진행도(상태 틱 ÷ 타임라인 길이) → 판정 프레임과 화면 동작이 정확히 맞는다
  *  - 이동 클립: 섞이는 클립끼리 정규화 위상을 공유 (접지 프레임이 같아 발이 꼬이지 않는다), 배속 = 실제 속도 ÷ 고유 속도
  *  - 나머지(피격/사망/가드): 렌더 시간
@@ -191,11 +191,15 @@ export class CharacterAnimator {
     for (const [group, v] of this.frameWeights) {
       if (v.w < MIN_WEIGHT) continue;
       if (!this.playing.has(group)) {
-        group.start(true, 0, v.clip.from, v.clip.to);
+        // 시작 직후 일시정지: Babylon 애니메이션 시계가 프레임을 덮어쓰지 않게 한다 (속도 0으로 재생하면
+        // 매 렌더마다 시작 프레임으로 되돌아간다). 시간은 아래 goToFrame으로만 정한다.
+        group.start(true, 1, v.clip.from, v.clip.to);
+        group.pause();
         this.playing.add(group);
       }
-      group.goToFrame(v.clip.from + v.time * v.clip.fps);
       group.setWeightForAllAnimatables(Math.min(1, v.w));
+      // useWeight=true: 가중치를 실어 쓰면 씬의 애니메이션 단계(late binding)가 그룹들을 가중치대로 섞는다
+      group.goToFrame(v.clip.from + v.time * v.clip.fps, true);
     }
     for (const group of [...this.playing]) {
       const v = this.frameWeights.get(group);

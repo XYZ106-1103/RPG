@@ -9,6 +9,9 @@ class FakeGroup {
   frame = -1;
   weight = 0;
   isPlaying = false;
+  paused = false;
+  /** goToFrame에 가중치를 실었는가 (useWeight) */
+  usedWeight = false;
   readonly targetedAnimations = [{ animation: { framePerSecond: 60 } }];
   constructor(
     readonly name: string,
@@ -17,14 +20,20 @@ class FakeGroup {
   ) {}
   start(): this {
     this.isPlaying = true;
+    this.paused = false;
     return this;
+  }
+  pause(): void {
+    this.paused = true;
   }
   stop(): void {
     this.isPlaying = false;
     this.weight = 0;
   }
-  goToFrame(f: number): void {
-    this.frame = f;
+  goToFrame(f: number, useWeight = false): void {
+    // 실제 Babylon: 일시정지하지 않은 그룹은 다음 렌더에서 자체 시계가 프레임을 덮어쓴다 (속도 0이면 시작 프레임으로)
+    this.frame = this.paused ? f : this.from;
+    this.usedWeight = useWeight;
   }
   setWeightForAllAnimatables(w: number): void {
     this.weight = w;
@@ -55,6 +64,16 @@ describe("CharacterAnimator", () => {
     expect(warn.mock.calls.some((c) => String(c[0]).includes("idle로 대체"))).toBe(true);
     expect(warn.mock.calls.some((c) => String(c[0]).includes("Dance"))).toBe(true);
     warn.mockRestore();
+  });
+
+  it("그룹은 일시정지 상태에서 가중치를 실은 goToFrame으로만 시간을 정한다 (Babylon 시계가 덮어쓰지 않게)", () => {
+    const { anim, g } = setup();
+    anim.update(1 / 60, base);
+    expect(g("idle").paused).toBe(true);
+    expect(g("idle").usedWeight).toBe(true);
+    const f0 = g("idle").frame;
+    anim.update(0.5, base);
+    expect(g("idle").frame).toBeGreaterThan(f0); // 서 있어도 idle이 진행
   });
 
   it("행동 클립 시간 = sim 진행도 × 클립 길이 (판정 프레임과 화면이 맞는다)", () => {
