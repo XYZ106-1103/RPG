@@ -78,15 +78,20 @@ export type AnimEventName =
   | "cancel_window"
   | `sfx:${string}`;
 
-/** src/anim/events/<캐릭터>.json 형식 (프레임은 fps 기준, 보통 30) */
+/** src/anim/events/<캐릭터>.json 형식 (프레임은 fps 기준, 보통 30). 생성: tools/gen_anim_events.mjs */
 export interface AnimEventsFile {
   fps: number;
+  character?: string;
   animations: Record<
     string,
     {
       /** 애니메이션 길이 (프레임) */
       length: number;
-      events: { frame: number; name: AnimEventName }[];
+      loop?: boolean;
+      /** 원본 메타데이터(animations.json) 작성자 값 — 비교용, 로직은 쓰지 않는다 */
+      source?: unknown;
+      /** note: "추정값 (35%)" 같은 사람용 주석 */
+      events: { frame: number; name: AnimEventName | string; note?: string }[];
     }
   >;
 }

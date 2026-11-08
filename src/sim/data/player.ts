@@ -1,11 +1,14 @@
 /**
  * 플레이어 이동/아이템 수치.
+ *
+ * 이동 속도는 hero 애니메이션(1.8m 기준 걷기 0.87 / 달리기 2.32 / 질주 3.48 m/s)과 게임 손맛의 중간값 (C안).
+ * 애니메이션은 실제 속도에 맞춰 약 1.5배로 재생한다 (anim/blendTree.ts의 재생 배속).
  */
 export const PLAYER_MOVEMENT = {
   /** 스틱을 살짝 기울였을 때 (m/s) */
-  walkSpeed: 2.0,
-  runSpeed: 4.6,
-  sprintSpeed: 6.8,
+  walkSpeed: 1.4,
+  runSpeed: 3.6,
+  sprintSpeed: 5.2,
   /** 가드 중 이동 속도 */
   guardSpeed: 1.6,
   /** 이 기울기 미만이면 걷기 */

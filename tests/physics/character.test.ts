@@ -9,6 +9,7 @@ import { LAYER } from "../../src/physics/layers";
 import { nativeBodyId } from "../../src/physics/physicsWorld";
 import { createRamp, createStairs, createStaticBox } from "../../src/physics/testGeometry";
 import { BUTTON, createInputFrame } from "../../src/sim/inputFrame";
+import { PLAYER_TIMELINES } from "../../src/sim/data/playerTimelines";
 import { SIM_DT } from "../../src/sim/time";
 import { SimWorld } from "../../src/sim/world";
 import { createPhysicsFixture, type PhysicsFixture } from "./havokTestUtil";
@@ -253,11 +254,11 @@ describe("CharacterSystem (sim MovementPort)", () => {
     f.pressed = BUTTON.roll;
     f.moveX = 1;
     sim.players.setInput(p.id, f);
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < PLAYER_TIMELINES.roll.length + 4; i++) {
       sim.step();
       fx.world.step(SIM_DT);
     }
-    expect(p.position.x - start).toBeCloseTo(3.4, 0);
+    expect(p.position.x - start).toBeCloseTo(PLAYER_TIMELINES.roll.rootMotion?.distance ?? 0, 0);
   });
 
   it("remove하면 컨트롤러와 바디가 정리된다", () => {
