@@ -1,0 +1,506 @@
+{
+  "_설명": "hero의 애니메이션 이벤트 (30fps 프레임). \"추정값\"은 길이 비율로 넣은 값이라 테스트하며 조정한다. source는 animations.json 작성자 값(비교용).",
+  "character": "hero",
+  "fps": 30,
+  "animations": {
+    "attack_heavy": {
+      "length": 34,
+      "loop": false,
+      "events": [
+        {
+          "frame": 10,
+          "name": "sfx:swing",
+          "note": "추정값 (29%) — 휘두름 소리, hit_start 2프레임 전"
+        },
+        {
+          "frame": 12,
+          "name": "hit_start",
+          "note": "추정값 (35%)"
+        },
+        {
+          "frame": 14,
+          "name": "input_buffer_start",
+          "note": "추정값 (41%)"
+        },
+        {
+          "frame": 19,
+          "name": "hit_end",
+          "note": "추정값 (56%)"
+        },
+        {
+          "frame": 24,
+          "name": "cancel_window",
+          "note": "추정값 (71%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "hit": 14
+        }
+      }
+    },
+    "attack_light_1": {
+      "length": 26,
+      "loop": false,
+      "events": [
+        {
+          "frame": 7,
+          "name": "sfx:swing",
+          "note": "추정값 (27%) — 휘두름 소리, hit_start 2프레임 전"
+        },
+        {
+          "frame": 9,
+          "name": "hit_start",
+          "note": "추정값 (35%)"
+        },
+        {
+          "frame": 10,
+          "name": "input_buffer_start",
+          "note": "추정값 (38%)"
+        },
+        {
+          "frame": 14,
+          "name": "hit_end",
+          "note": "추정값 (54%)"
+        },
+        {
+          "frame": 18,
+          "name": "cancel_window",
+          "note": "추정값 (69%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "hit": 11
+        }
+      }
+    },
+    "attack_light_2": {
+      "length": 26,
+      "loop": false,
+      "events": [
+        {
+          "frame": 7,
+          "name": "sfx:swing",
+          "note": "추정값 (27%) — 휘두름 소리, hit_start 2프레임 전"
+        },
+        {
+          "frame": 9,
+          "name": "hit_start",
+          "note": "추정값 (35%)"
+        },
+        {
+          "frame": 10,
+          "name": "input_buffer_start",
+          "note": "추정값 (38%)"
+        },
+        {
+          "frame": 14,
+          "name": "hit_end",
+          "note": "추정값 (54%)"
+        },
+        {
+          "frame": 18,
+          "name": "cancel_window",
+          "note": "추정값 (69%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "hit": 11
+        }
+      }
+    },
+    "attack_light_3": {
+      "length": 24,
+      "loop": false,
+      "events": [
+        {
+          "frame": 6,
+          "name": "sfx:swing",
+          "note": "추정값 (25%) — 휘두름 소리, hit_start 2프레임 전"
+        },
+        {
+          "frame": 8,
+          "name": "hit_start",
+          "note": "추정값 (33%)"
+        },
+        {
+          "frame": 10,
+          "name": "input_buffer_start",
+          "note": "추정값 (42%)"
+        },
+        {
+          "frame": 13,
+          "name": "hit_end",
+          "note": "추정값 (54%)"
+        },
+        {
+          "frame": 17,
+          "name": "cancel_window",
+          "note": "추정값 (71%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "hit": [
+            8,
+            12
+          ]
+        }
+      }
+    },
+    "attack_run": {
+      "length": 22,
+      "loop": false,
+      "events": [
+        {
+          "frame": 6,
+          "name": "sfx:swing",
+          "note": "추정값 (27%) — 휘두름 소리, hit_start 2프레임 전"
+        },
+        {
+          "frame": 8,
+          "name": "hit_start",
+          "note": "추정값 (36%)"
+        },
+        {
+          "frame": 9,
+          "name": "input_buffer_start",
+          "note": "추정값 (41%)"
+        },
+        {
+          "frame": 12,
+          "name": "hit_end",
+          "note": "추정값 (55%)"
+        },
+        {
+          "frame": 15,
+          "name": "cancel_window",
+          "note": "추정값 (68%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "hit": [
+            6,
+            10
+          ]
+        },
+        "distance": 2
+      }
+    },
+    "backstep": {
+      "length": 13,
+      "loop": false,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:roll",
+          "note": "추정값 (0%) — 구르기 시작 소리 자리"
+        },
+        {
+          "frame": 1,
+          "name": "iframe_start",
+          "note": "추정값 (8%)"
+        },
+        {
+          "frame": 6,
+          "name": "iframe_end",
+          "note": "추정값 (46%)"
+        },
+        {
+          "frame": 10,
+          "name": "cancel_window",
+          "note": "추정값 (77%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "invulnerable": [
+            1,
+            4
+          ]
+        },
+        "distance": 1.6
+      }
+    },
+    "death": {
+      "length": 75,
+      "loop": false,
+      "events": [
+        {
+          "frame": 50,
+          "name": "sfx:body_fall",
+          "note": "animations.json 'down' 프레임 (67%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "down": 50
+        }
+      }
+    },
+    "drink": {
+      "length": 78,
+      "loop": false,
+      "events": [
+        {
+          "frame": 30,
+          "name": "sfx:drink",
+          "note": "animations.json 'drink' 프레임 (38%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "grab": 13,
+          "drink": [
+            30,
+            50
+          ],
+          "heal": 50
+        }
+      }
+    },
+    "guard": {
+      "length": 36,
+      "loop": false,
+      "events": [
+        {
+          "frame": 14,
+          "name": "sfx:guard_impact",
+          "note": "animations.json 'impact' 프레임 (39%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "guard": [
+            5,
+            30
+          ],
+          "impact": 14
+        }
+      }
+    },
+    "hit_back": {
+      "length": 15,
+      "loop": false,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:hit",
+          "note": "추정값 (0%) — 소리 자리"
+        }
+      ]
+    },
+    "hit_front": {
+      "length": 15,
+      "loop": false,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:hit",
+          "note": "추정값 (0%) — 소리 자리"
+        }
+      ]
+    },
+    "idle": {
+      "length": 90,
+      "loop": true,
+      "events": []
+    },
+    "parry": {
+      "length": 20,
+      "loop": false,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:parry",
+          "note": "추정값 (0%) — 소리 자리"
+        }
+      ],
+      "source": {
+        "events": {
+          "recovered": 16
+        }
+      }
+    },
+    "roll_b": {
+      "length": 28,
+      "loop": false,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:roll",
+          "note": "추정값 (0%) — 구르기 시작 소리 자리"
+        },
+        {
+          "frame": 3,
+          "name": "iframe_start",
+          "note": "추정값 (11%)"
+        },
+        {
+          "frame": 13,
+          "name": "iframe_end",
+          "note": "추정값 (46%)"
+        },
+        {
+          "frame": 21,
+          "name": "cancel_window",
+          "note": "추정값 (75%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "invulnerable": [
+            4,
+            22
+          ]
+        },
+        "distance": 1.4
+      }
+    },
+    "roll_f": {
+      "length": 28,
+      "loop": false,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:roll",
+          "note": "추정값 (0%) — 구르기 시작 소리 자리"
+        },
+        {
+          "frame": 3,
+          "name": "iframe_start",
+          "note": "추정값 (11%)"
+        },
+        {
+          "frame": 13,
+          "name": "iframe_end",
+          "note": "추정값 (46%)"
+        },
+        {
+          "frame": 21,
+          "name": "cancel_window",
+          "note": "추정값 (75%)"
+        }
+      ],
+      "source": {
+        "events": {
+          "invulnerable": [
+            4,
+            22
+          ]
+        },
+        "distance": 1.4
+      }
+    },
+    "run_f": {
+      "length": 20,
+      "loop": true,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:step_l",
+          "note": "animations.json 접지 프레임 (0%)"
+        },
+        {
+          "frame": 10,
+          "name": "sfx:step_r",
+          "note": "animations.json 접지 프레임 (50%)"
+        }
+      ]
+    },
+    "sprint": {
+      "length": 18,
+      "loop": true,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:step_l",
+          "note": "animations.json 접지 프레임 (0%)"
+        },
+        {
+          "frame": 9,
+          "name": "sfx:step_r",
+          "note": "animations.json 접지 프레임 (50%)"
+        }
+      ]
+    },
+    "stagger": {
+      "length": 30,
+      "loop": false,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:stagger",
+          "note": "추정값 (0%) — 소리 자리"
+        }
+      ]
+    },
+    "walk_b": {
+      "length": 32,
+      "loop": true,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:step_l",
+          "note": "animations.json 접지 프레임 (0%)"
+        },
+        {
+          "frame": 16,
+          "name": "sfx:step_r",
+          "note": "animations.json 접지 프레임 (50%)"
+        }
+      ]
+    },
+    "walk_f": {
+      "length": 32,
+      "loop": true,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:step_l",
+          "note": "animations.json 접지 프레임 (0%)"
+        },
+        {
+          "frame": 16,
+          "name": "sfx:step_r",
+          "note": "animations.json 접지 프레임 (50%)"
+        }
+      ]
+    },
+    "walk_l": {
+      "length": 32,
+      "loop": true,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:step_l",
+          "note": "animations.json 접지 프레임 (0%)"
+        },
+        {
+          "frame": 16,
+          "name": "sfx:step_r",
+          "note": "animations.json 접지 프레임 (50%)"
+        }
+      ]
+    },
+    "walk_r": {
+      "length": 32,
+      "loop": true,
+      "events": [
+        {
+          "frame": 0,
+          "name": "sfx:step_l",
+          "note": "animations.json 접지 프레임 (0%)"
+        },
+        {
+          "frame": 16,
+          "name": "sfx:step_r",
+          "note": "animations.json 접지 프레임 (50%)"
+        }
+      ]
+    }
+  }
+}
