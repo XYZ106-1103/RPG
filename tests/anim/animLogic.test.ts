@@ -27,6 +27,7 @@ describe("sim 상태 → 애니메이션 상태 테이블", () => {
     expect(resolveAnimState("move", null, true)).toBe("locomotion_lock");
     expect(resolveAnimState("sprint", null, true)).toBe("locomotion");
     expect(resolveAnimState("roll", "roll", true)).toBe("roll_f");
+    expect(resolveAnimState("backstep", "backstep", false)).toBe("locomotion"); // idle 자세로 뒤로 미끄러짐
     expect(resolveAnimState("death", null, false)).toBe("death");
   });
 

@@ -46,11 +46,11 @@ describe("ActionMapper — 키보드/마우스", () => {
     expect(sample(m).moveX).toBe(-1);
   });
 
-  it("왼쪽 Alt를 누르고 있으면 키보드 이동이 걷기 세기(데드존 < 0.4 < 걷기 기준)로 줄고, 버튼 비트는 없다", () => {
+  it("Z를 누르고 있으면 키보드 이동이 걷기 세기(데드존 < 0.4 < 걷기 기준)로 줄고, 버튼 비트는 없다", () => {
     const m = mapper();
     m.keyDown("KeyW", 0);
     expect(sample(m).moveY).toBeCloseTo(1, 2);
-    expect(m.keyDown("AltLeft", 0)).toBe(true); // 바인딩됨 → preventDefault (브라우저 메뉴 방지)
+    expect(m.keyDown("KeyZ", 0)).toBe(true); // 바인딩됨 → preventDefault
     let f = sample(m);
     expect(f.moveY).toBeCloseTo(KEYBOARD_WALK_MAGNITUDE, 1);
     expect(f.moveY).toBeGreaterThan(PLAYER_MOVEMENT.moveDeadzone);
@@ -59,7 +59,7 @@ describe("ActionMapper — 키보드/마우스", () => {
     m.keyDown("KeyD", 0); // 대각선도 같은 세기
     f = sample(m);
     expect(Math.hypot(f.moveX, f.moveY)).toBeCloseTo(KEYBOARD_WALK_MAGNITUDE, 1);
-    m.keyUp("AltLeft", 0);
+    m.keyUp("KeyZ", 0);
     expect(Math.hypot(sample(m).moveX, sample(m).moveY)).toBeCloseTo(1, 1);
   });
 
@@ -113,8 +113,8 @@ describe("ActionMapper — 키보드/마우스", () => {
     const m = mapper();
     expect(m.keyDown("KeyW", 0)).toBe(true);
     expect(m.keyDown("Space", 0)).toBe(true);
-    expect(m.keyDown("KeyZ", 0)).toBe(false);
-    expect(m.keyUp("KeyZ", 0)).toBe(false);
+    expect(m.keyDown("KeyX", 0)).toBe(false);
+    expect(m.keyUp("KeyX", 0)).toBe(false);
     expect(m.mouseDown(MOUSE.MIDDLE, 0)).toBe(false);
   });
 

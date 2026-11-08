@@ -17,7 +17,6 @@ export type AnimStateId =
   | "guard"
   | "drink"
   | "roll_f"
-  | "backstep"
   | "attack_light_1"
   | "attack_light_2"
   | "attack_light_3"
@@ -46,7 +45,6 @@ export const ANIM_STATES: Readonly<Record<AnimStateId, AnimStateDef>> = {
   guard: { kind: "clip", clip: "guard", time: "free", loop: false, hold: 12 },
   drink: { kind: "clip", clip: "drink", time: "action", loop: false },
   roll_f: { kind: "clip", clip: "roll_f", time: "action", loop: false },
-  backstep: { kind: "clip", clip: "backstep", time: "action", loop: false },
   attack_light_1: { kind: "clip", clip: "attack_light_1", time: "action", loop: false },
   attack_light_2: { kind: "clip", clip: "attack_light_2", time: "action", loop: false },
   attack_light_3: { kind: "clip", clip: "attack_light_3", time: "action", loop: false },
@@ -77,7 +75,7 @@ export const SIM_TO_ANIM: {
     attack_run: "attack_run",
   },
   roll: "roll_f", // sim은 구르는 방향으로 몸을 돌리므로 정면 구르기 하나
-  backstep: "backstep",
+  backstep: "locomotion", // 백스텝은 idle 자세 그대로 뒤로 미끄러진다 (행동 중 이동 속도 0 → idle 100%, 서 있던 idle에서 끊김 없이)
   drink: "drink",
   stagger: "stagger",
   death: "death",

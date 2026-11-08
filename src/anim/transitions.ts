@@ -15,9 +15,7 @@ export const TRANSITIONS: readonly (readonly [Pattern, Pattern, number])[] = [
   ["attack_*", "attack_*", 0.08], // 콤보: 빨리 이어 붙인다
   ["*", "attack_*", 0.1],
   ["*", "roll_f", 0.06],
-  ["*", "backstep", 0.06],
   ["roll_f", "*", 0.18],
-  ["backstep", "*", 0.15],
   ["attack_*", "*", 0.22], // 공격 후 복귀는 천천히
   ["locomotion", "locomotion_lock", 0.25],
   ["locomotion_lock", "locomotion", 0.25],
