@@ -1,0 +1,235 @@
+{
+ "Idle": {
+  "frames": 90,
+  "fps": 30,
+  "loop": true,
+  "speed": 0
+ },
+ "Walk": {
+  "frames": 32,
+  "fps": 30,
+  "loop": true,
+  "speed": 0.5625,
+  "direction": "forward",
+  "contacts": {
+   "L": 0,
+   "R": 16
+  }
+ },
+ "Run": {
+  "frames": 20,
+  "fps": 30,
+  "loop": true,
+  "speed": 1.5,
+  "direction": "forward",
+  "contacts": {
+   "L": 0,
+   "R": 10
+  }
+ },
+ "sprint": {
+  "frames": 18,
+  "fps": 30,
+  "loop": true,
+  "speed": 2.25,
+  "direction": "forward",
+  "contacts": {
+   "L": 0,
+   "R": 9
+  }
+ },
+ "walk_b": {
+  "frames": 32,
+  "fps": 30,
+  "loop": true,
+  "speed": 0.5625,
+  "direction": "backward",
+  "contacts": {
+   "L": 0,
+   "R": 16
+  }
+ },
+ "walk_l": {
+  "frames": 32,
+  "fps": 30,
+  "loop": true,
+  "speed": 0.375,
+  "direction": "left",
+  "contacts": {
+   "L": 0,
+   "R": 16
+  }
+ },
+ "walk_r": {
+  "frames": 32,
+  "fps": 30,
+  "loop": true,
+  "speed": 0.375,
+  "direction": "right",
+  "contacts": {
+   "L": 0,
+   "R": 16
+  }
+ },
+ "Roll": {
+  "frames": 28,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "distance": 1.4,
+  "direction": "forward",
+  "events": {
+   "invulnerable": [
+    4,
+    22
+   ]
+  }
+ },
+ "SlashL": {
+  "frames": 26,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "events": {
+   "hit": 11
+  }
+ },
+ "SlashR": {
+  "frames": 26,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "events": {
+   "hit": 11
+  }
+ },
+ "Smash": {
+  "frames": 34,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "events": {
+   "hit": 14
+  }
+ },
+ "Block": {
+  "frames": 36,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "events": {
+   "guard": [
+    5,
+    30
+   ],
+   "impact": 14
+  }
+ },
+ "Drink": {
+  "frames": 78,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "events": {
+   "grab": 13,
+   "drink": [
+    30,
+    50
+   ],
+   "heal": 50
+  }
+ },
+ "death": {
+  "frames": 75,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "hold_last_frame": true,
+  "events": {
+   "down": 50
+  }
+ },
+ "stagger": {
+  "frames": 30,
+  "fps": 30,
+  "loop": false,
+  "speed": 0
+ },
+ "hit_front": {
+  "frames": 15,
+  "fps": 30,
+  "loop": false,
+  "speed": 0
+ },
+ "hit_back": {
+  "frames": 15,
+  "fps": 30,
+  "loop": false,
+  "speed": 0
+ },
+ "backstep": {
+  "frames": 13,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "distance": 1.6,
+  "direction": "backward",
+  "events": {
+   "invulnerable": [
+    1,
+    4
+   ]
+  }
+ },
+ "attack_light_3": {
+  "frames": 24,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "events": {
+   "hit": [
+    8,
+    12
+   ]
+  }
+ },
+ "attack_run": {
+  "frames": 22,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "distance": 2.0,
+  "direction": "forward",
+  "starts_from": "Run frame 0",
+  "events": {
+   "hit": [
+    6,
+    10
+   ]
+  }
+ },
+ "roll_b": {
+  "frames": 28,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "distance": 1.4,
+  "direction": "backward",
+  "events": {
+   "invulnerable": [
+    4,
+    22
+   ]
+  }
+ },
+ "parry": {
+  "frames": 20,
+  "fps": 30,
+  "loop": false,
+  "speed": 0,
+  "starts_from": "SlashL frame 11",
+  "events": {
+   "recovered": 16
+  }
+ }
+}

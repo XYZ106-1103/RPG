@@ -1,5 +1,12 @@
 [
   {
+    "file": "characters/hero*",
+    "source": "메시·텍스처: Krea.ai 유료(Pro) 플랜의 Hunyuan3D 3.1 Pro로 생성 / 리그·애니메이션 22개: Blender 직접 제작",
+    "url": "https://www.krea.ai/apps/ai-3d-model-generator",
+    "author": "XYZ106-1103",
+    "license": "Krea 유료 플랜 상업용 라이선스 (약관 https://www.krea.ai/terms, 2026-11-08 확인) — 리그·애니메이션은 자체 제작"
+  },
+  {
     "file": "hdri/night_overcast*",
     "source": "Poly Haven",
     "url": "https://polyhaven.com/a/kloppenheim_07_puresky",
