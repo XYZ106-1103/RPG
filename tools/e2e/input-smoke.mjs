@@ -10,6 +10,7 @@
  *  3. 고정에 쓴 그 클릭은 공격으로 나가지 않는다 (상태 idle 유지)
  *  4. 마우스 이동(pointermove의 movementX) → 카메라 yaw가 바뀐다 (헤드리스 한계로 이 항목만 합성 이벤트)
  *  5. 왼쪽 클릭 → 공격 상태가 된다
+ *  6. 캐릭터 모델: 서 있을 때 idle, 공격할 때 공격 애니메이션이 실제로 본을 움직인다 (디버그 패널 "포즈 N°/s")
  *
  * 실행: npm run e2e:input   (Playwright와 Chromium이 필요: npm i -D playwright && npx playwright install chromium)
  */
@@ -48,10 +49,16 @@ try {
   const panelText = () => page.evaluate(() => [...document.querySelectorAll("div")].find((d) => d.textContent?.includes("스태미나"))?.textContent ?? "");
   const state = async () => /상태\s+(\S+)/.exec(await panelText())?.[1] ?? "?";
   const yaw = async () => Number(/카메라 (-?\d+)°/.exec(await panelText())?.[1] ?? NaN);
+  /** 캐릭터 모델 척추 본의 실제 회전 속도 (도/초) — 모델이 없으면 NaN */
+  const pose = async () => Number(/포즈 (\d+)°\/s/.exec(await panelText())?.[1] ?? NaN);
   const hintVisible = () => page.evaluate(() => [...document.querySelectorAll("div")].some((d) => d.textContent?.includes("마우스가 고정됩니다") && d.style.display !== "none"));
   const locked = () => page.evaluate(() => document.pointerLockElement?.id === "renderCanvas");
 
   check(await hintVisible(), "첫 화면에 마우스 고정 안내 표시");
+  // 서 있을 때도 idle 애니메이션이 실제로 포즈를 움직이는가 (Babylon 시계가 프레임을 덮어써 멈추던 문제 방지)
+  await page.waitForTimeout(1200);
+  const idlePose = await pose();
+  check(idlePose >= 1, "서 있을 때 idle 애니메이션이 움직인다", `척추 ${idlePose}°/s`);
 
   await page.mouse.move(640, 360);
   await page.mouse.down();
@@ -78,12 +85,18 @@ try {
   await page.waitForTimeout(60);
   await page.mouse.up();
   let attacked = "";
+  let attackPose = 0;
   for (let i = 0; i < 20 && !attacked; i++) {
     const s = await state();
     if (s.startsWith("attack")) attacked = s;
     else await page.waitForTimeout(25);
   }
   check(attacked !== "", "왼쪽 클릭으로 공격한다", attacked || `상태 ${await state()}`);
+  for (let i = 0; i < 12; i++) {
+    attackPose = Math.max(attackPose, await pose());
+    await page.waitForTimeout(50);
+  }
+  check(attackPose >= 30, "공격 애니메이션이 실제로 포즈를 움직인다", `척추 최대 ${attackPose}°/s`);
 
   check(errors.length === 0, "페이지 오류 없음", errors.join(" | "));
 } finally {

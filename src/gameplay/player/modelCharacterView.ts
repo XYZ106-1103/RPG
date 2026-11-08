@@ -3,6 +3,8 @@
  * 보간/히트스톱/밀림/플래시는 CharacterView 그대로 쓰고, 메시 반영(apply)과 효과(applyEffects)만 바꾼다.
  */
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 import type { CharacterAnimator } from "../../anim/animator";
@@ -26,6 +28,12 @@ export interface ModelViewContext {
 }
 
 export class ModelCharacterView extends CharacterView {
+  /** 포즈가 실제로 움직이는지 (디버그/검사용): 척추 본 회전 속도 (도/초, 스무딩) */
+  poseMotion = 0;
+  private readonly probe: TransformNode | null;
+  private readonly probePrev = new Quaternion();
+  private probeReady = false;
+
   constructor(
     scene: Scene,
     materials: ViewMaterials,
@@ -40,6 +48,20 @@ export class ModelCharacterView extends CharacterView {
     this.nose.isVisible = false;
     this.weapon.setEnabled(false);
     for (const m of model.meshes) m.overlayColor = new Color3(1, 1, 1);
+    this.probe = model.node("Spine") ?? model.node("Hips");
+  }
+
+  /** 직전 렌더에서 적용된 포즈와 비교해 척추 회전 속도를 잰다 (본 값은 scene.render 중에 바뀌므로 다음 프레임에 읽는다) */
+  private measurePose(dt: number): void {
+    const q = this.probe?.rotationQuaternion;
+    if (!q) return;
+    if (this.probeReady && dt > 0) {
+      const dot = Math.min(1, Math.abs(Quaternion.Dot(q, this.probePrev)));
+      const degPerSec = ((2 * Math.acos(dot)) * 180) / Math.PI / dt;
+      this.poseMotion += (degPerSec - this.poseMotion) * Math.min(1, dt * 4);
+    }
+    this.probePrev.copyFrom(q);
+    this.probeReady = true;
   }
 
   react(id: ReactionId): void {
@@ -55,6 +77,7 @@ export class ModelCharacterView extends CharacterView {
     this.model.root.position.set(d.position.x, d.position.y, d.position.z);
     this.model.root.rotation.y = d.yaw;
 
+    this.measurePose(this.frameDt);
     const p = this.ctx.player();
     let progress = 0;
     if (p?.action) {

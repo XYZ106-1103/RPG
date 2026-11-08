@@ -353,7 +353,7 @@ export class GameSession {
     const v = this.views.get(this.hero.id);
     if (!(v instanceof ModelCharacterView)) return "애니     (모델 없음 — 캡슐)";
     const d = v.animator.debug;
-    return `애니     ${d.state ?? "-"}  x${d.rate.toFixed(2)}  ${d.weights}`;
+    return `애니     ${d.state ?? "-"}  x${d.rate.toFixed(2)}  포즈 ${v.poseMotion.toFixed(0)}°/s  ${d.weights}`;
   }
 
   dispose(): void {
