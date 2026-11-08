@@ -3,7 +3,7 @@
  *
  * 무거운 기능은 모두 여기 값으로 켜고 끈다 (CLAUDE.md "품질 프리셋"). 각 기능은 자기가 쓰는 항목만 구독하고,
  * 프리셋이 바뀌면 그 항목 값이 실제로 달라졌을 때만 콜백을 받아 즉시 반영한다.
- *  - 지금 반영: 그림자(해상도/캐스케이드/필터/원거리 갱신/등불 그림자), 렌더 스케일
+ *  - 지금 반영: 그림자(해상도/캐스케이드/필터/원거리 갱신/등불 그림자·갱신 간격), 렌더 스케일
  *  - 값만 있음 (기능을 만들 때 구독): SSAO, SSR, 볼류메트릭, 식생 밀도
  */
 
@@ -30,6 +30,8 @@ export interface QualityPreset {
   /** 등불(포인트 라이트) 그림자 — 큐브맵이라 비싸다 */
   lanternShadow: boolean;
   lanternShadowMapSize: number;
+  /** 등불 그림자 갱신 간격 (프레임). 1 = 매 프레임 — 큐브맵 6면이라 2면 비용이 절반 */
+  lanternShadowInterval: number;
   ssao: EffectQuality;
   ssr: EffectQuality;
   volumetric: EffectQuality;
@@ -53,6 +55,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     farCascadeInterval: 4,
     lanternShadow: false,
     lanternShadowMapSize: 256,
+    lanternShadowInterval: 2,
     ssao: fx(false, 0),
     ssr: fx(false, 0),
     volumetric: fx(false, 0),
@@ -68,6 +71,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     farCascadeInterval: 3,
     lanternShadow: false,
     lanternShadowMapSize: 256,
+    lanternShadowInterval: 2,
     ssao: fx(true, 8),
     ssr: fx(false, 0),
     volumetric: fx(false, 0),
@@ -83,6 +87,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     farCascadeInterval: 2,
     lanternShadow: true,
     lanternShadowMapSize: 512,
+    lanternShadowInterval: 2,
     ssao: fx(true, 16),
     ssr: fx(true, 16),
     volumetric: fx(true, 32),
@@ -98,6 +103,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     farCascadeInterval: 1,
     lanternShadow: true,
     lanternShadowMapSize: 1024,
+    lanternShadowInterval: 1,
     ssao: fx(true, 32),
     ssr: fx(true, 32),
     volumetric: fx(true, 64),

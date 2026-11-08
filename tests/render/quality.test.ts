@@ -12,6 +12,7 @@ describe("품질 프리셋", () => {
       expect(b.shadowMapSize).toBeGreaterThanOrEqual(a.shadowMapSize);
       expect(b.shadowCascades).toBeGreaterThanOrEqual(a.shadowCascades);
       expect(b.farCascadeInterval).toBeLessThanOrEqual(a.farCascadeInterval);
+      expect(b.lanternShadowInterval).toBeLessThanOrEqual(a.lanternShadowInterval);
       expect(b.ssao.samples).toBeGreaterThanOrEqual(a.ssao.samples);
       expect(b.vegetationDensity).toBeGreaterThanOrEqual(a.vegetationDensity);
       expect(b.renderScale).toBeGreaterThanOrEqual(a.renderScale);

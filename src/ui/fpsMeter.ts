@@ -33,3 +33,26 @@ export class FpsMeter {
     return this.worst * 1000;
   }
 }
+
+/**
+ * 구간 시간(ms)의 지수 이동 평균 — 디버그 패널에서 숫자가 덜 튀게 (Babylon 비의존).
+ * smoothing은 새 값의 반영 비율 (0~1).
+ */
+export class AverageMs {
+  private value = 0;
+  private started = false;
+
+  constructor(private readonly smoothing = 0.1) {}
+
+  add(ms: number): void {
+    if (!Number.isFinite(ms) || ms < 0) return;
+    if (!this.started) {
+      this.value = ms;
+      this.started = true;
+    } else this.value += (ms - this.value) * this.smoothing;
+  }
+
+  get ms(): number {
+    return this.value;
+  }
+}

@@ -8,6 +8,12 @@
  *    (2) 그 층을 지우지도 그리지도 않아 직전 깊이를 그대로 쓴다. 내부 구조가 예상과 다르면(버전 변경)
  *    자동으로 매 프레임 전체 갱신으로 되돌아가고 경고를 띄운다.
  * 등불: High 이상 프리셋에서만 큐브맵 그림자 (Poisson 샘플링으로 가장자리를 부드럽게)
+ *  - 큐브 6면마다 그 면에 걸치는, 등불 범위 안의 캐스터만 그린다 (lanternCulling.ts)
+ *  - 갱신 간격은 프리셋 (High 2프레임, Ultra 매 프레임)
+ *  - 등불을 든 플레이어 본인은 addCaster(..., { lantern: false })로 뺀다 (몸 안쪽 광원이라 비용만 들고 그림자가 어색하다)
+ *
+ * 조정값(바이어스 등)은 매 프레임 확인하되 값이 바뀔 때만 Babylon에 넣는다 — 일부 세터(cascadeBlendPercentage 등)는
+ * 같은 값이어도 모든 메시 재질을 다시 검사하게 만든다.
  *
  * 캐스터/리시버 등록은 addCaster/addReceiver가 돌려주는 해제 함수로 — 청크 로드/해제와 묶어 쓴다.
  * 메시가 dispose되면 자동으로 빠진다.
@@ -25,6 +31,7 @@ import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { Node } from "@babylonjs/core/node";
 import type { Scene } from "@babylonjs/core/scene";
 import { cascadeUpdates } from "./cascadeSchedule";
+import { sphereInCubeFace, sphereWithinRange } from "./lanternCulling";
 import type { QualityManager, QualityPreset } from "./quality";
 
 export interface ShadowSettings {
@@ -102,6 +109,9 @@ export interface ShadowStats {
   frames: number;
   /** 캐스케이드별 갱신이 동작 중인가 (내부 구조가 달라 꺼졌으면 false) */
   perCascadeUpdate: boolean;
+  /** 마지막 프레임 등불 그림자: 6면에 그린 캐스터 수 합 / 등불 캐스터 후보 수 */
+  lanternFaceDraws: number;
+  lanternCandidates: number;
 }
 
 const EMPTY: AbstractMesh[] = [];
@@ -110,7 +120,7 @@ export class ShadowSystem {
   readonly settings: ShadowSettings;
   readonly sun: CascadedShadowGenerator;
   lanternGen: ShadowGenerator | null = null;
-  readonly stats: ShadowStats = { cascadeRenders: [], cascadeSkips: [], frames: 0, perCascadeUpdate: true };
+  readonly stats: ShadowStats = { cascadeRenders: [], cascadeSkips: [], frames: 0, perCascadeUpdate: true, lanternFaceDraws: 0, lanternCandidates: 0 };
 
   private readonly casters = new Map<AbstractMesh, { sun: boolean; lantern: boolean; obs: Observer<Node> | null }>();
   private readonly receivers = new Set<AbstractMesh>();
@@ -122,6 +132,13 @@ export class ShadowSystem {
   private currentLayer = 0;
   private frame = 0;
   private readonly unsubscribe: () => void;
+  /** 등불 큐브 면별 그릴 목록 (재사용) */
+  private readonly lanternLists: AbstractMesh[][] = [[], [], [], [], [], []];
+  /** 면 번호 → 축 방향 (Babylon 포인트 라이트의 면 순서를 그대로 묻는다: +X, -X, -Y, +Y, +Z, -Z) */
+  private readonly faceAxes: [number, number, number][];
+  private hookedLanternMap: RenderTargetTexture | null = null;
+  /** 마지막으로 Babylon에 넣은 조정값 (바뀔 때만 다시 넣는다) */
+  private applied: ShadowSettings | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -133,12 +150,16 @@ export class ShadowSystem {
   ) {
     this.settings = { ...DEFAULT_SHADOWS, ...settings };
     this.preset = quality.current;
+    this.faceAxes = [0, 1, 2, 3, 4, 5].map((f) => {
+      const d = lanternLight.getShadowDirection(f);
+      return [Math.sign(Math.round(d.x)), Math.sign(Math.round(d.y)), Math.sign(Math.round(d.z))];
+    });
     this.sun = new CascadedShadowGenerator(this.preset.shadowMapSize, sunLight, undefined, camera);
     this.sun.stabilizeCascades = true;
     this.sun.depthClamp = false;
     this.sun.autoCalcDepthBounds = false;
     this.wrapComputeMatrices();
-    this.unsubscribe = quality.subscribe(["shadowMapSize", "shadowCascades", "shadowFilter", "shadowFilterQuality", "farCascadeInterval", "lanternShadow", "lanternShadowMapSize"], (p) =>
+    this.unsubscribe = quality.subscribe(["shadowMapSize", "shadowCascades", "shadowFilter", "shadowFilterQuality", "farCascadeInterval", "lanternShadow", "lanternShadowMapSize", "lanternShadowInterval"], (p) =>
       this.applyPreset(p),
     );
   }
@@ -198,18 +219,8 @@ export class ShadowSystem {
   update(): void {
     const s = this.settings;
     const g = this.sun;
-    g.bias = s.sunBias;
-    g.normalBias = s.sunNormalBias;
-    g.contactHardeningLightSizeUVRatio = s.pcssLightSize;
-    g.cascadeBlendPercentage = s.cascadeBlend;
-    g.lambda = s.lambda;
-    g.shadowMaxZ = s.shadowMaxZ;
-    g.darkness = s.darkness;
-    if (this.lanternGen) {
-      this.lanternGen.bias = s.lanternBias;
-      this.lanternGen.normalBias = s.lanternNormalBias;
-      this.lanternGen.darkness = s.lanternDarkness;
-    }
+    this.applySettings();
+    this.cullLantern();
     const interval = s.farIntervalOverride > 0 ? s.farIntervalOverride : this.preset.farCascadeInterval;
     cascadeUpdates(this.frame, g.numCascades, interval, 2, this.updateMask);
     this.frame++;
@@ -217,11 +228,76 @@ export class ShadowSystem {
     this.hookShadowMap();
   }
 
+  /** 조정값이 바뀐 것만 Babylon에 넣는다 (등불 생성기가 새로 만들어지면 applied = null로 전부 다시) */
+  private applySettings(): void {
+    const s = this.settings;
+    const a = this.applied;
+    const g = this.sun;
+    if (!a || a.sunBias !== s.sunBias) g.bias = s.sunBias;
+    if (!a || a.sunNormalBias !== s.sunNormalBias) g.normalBias = s.sunNormalBias;
+    if (!a || a.pcssLightSize !== s.pcssLightSize) g.contactHardeningLightSizeUVRatio = s.pcssLightSize;
+    if (!a || a.cascadeBlend !== s.cascadeBlend) g.cascadeBlendPercentage = s.cascadeBlend;
+    if (!a || a.lambda !== s.lambda) g.lambda = s.lambda;
+    if (!a || a.shadowMaxZ !== s.shadowMaxZ) g.shadowMaxZ = s.shadowMaxZ;
+    if (!a || a.darkness !== s.darkness) g.darkness = s.darkness;
+    const lg = this.lanternGen;
+    if (lg) {
+      if (!a || a.lanternBias !== s.lanternBias) lg.bias = s.lanternBias;
+      if (!a || a.lanternNormalBias !== s.lanternNormalBias) lg.normalBias = s.lanternNormalBias;
+      if (!a || a.lanternDarkness !== s.lanternDarkness) lg.darkness = s.lanternDarkness;
+    }
+    if (a) Object.assign(a, s);
+    else this.applied = { ...s };
+  }
+
+  /** 등불 큐브 면별 그릴 목록: 등불 범위 안 + 그 면의 시야에 걸치는 캐스터만 */
+  private cullLantern(): void {
+    const lg = this.lanternGen;
+    if (!lg) {
+      this.stats.lanternFaceDraws = 0;
+      this.stats.lanternCandidates = 0;
+      return;
+    }
+    const map = lg.getShadowMap();
+    if (map && map !== this.hookedLanternMap) {
+      this.hookedLanternMap = map;
+      map.getCustomRenderList = (face) => this.lanternLists[face] ?? EMPTY;
+    }
+    const p = this.lanternLight.getAbsolutePosition();
+    const range = this.lanternLight.range;
+    const lists = this.lanternLists;
+    for (const l of lists) l.length = 0;
+    let candidates = 0;
+    let draws = 0;
+    for (const [m, c] of this.casters) {
+      if (!c.lantern || !m.isEnabled() || !m.isVisible) continue;
+      candidates++;
+      const bs = m.getBoundingInfo().boundingSphere;
+      const dx = bs.centerWorld.x - p.x;
+      const dy = bs.centerWorld.y - p.y;
+      const dz = bs.centerWorld.z - p.z;
+      const r = bs.radiusWorld;
+      if (!sphereWithinRange(dx, dy, dz, r, range)) continue;
+      for (let f = 0; f < 6; f++) {
+        const ax = this.faceAxes[f] as [number, number, number];
+        if (sphereInCubeFace(dx, dy, dz, r, ax[0], ax[1], ax[2])) {
+          (lists[f] as AbstractMesh[]).push(m);
+          draws++;
+        }
+      }
+    }
+    this.stats.lanternCandidates = candidates;
+    this.stats.lanternFaceDraws = draws;
+  }
+
   /** 디버그 패널 한 줄 */
   describe(): string {
     const s = this.settings;
     const interval = s.farIntervalOverride > 0 ? s.farIntervalOverride : this.preset.farCascadeInterval;
-    const lantern = this.lanternGen ? `등불 ${this.preset.lanternShadowMapSize}` : "등불 끔";
+    const st = this.stats;
+    const lantern = this.lanternGen
+      ? `등불 ${this.preset.lanternShadowMapSize} 1/${this.preset.lanternShadowInterval} 면당 ${(st.lanternFaceDraws / 6).toFixed(1)}/${st.lanternCandidates}`
+      : "등불 끔";
     const per = this.stats.perCascadeUpdate ? `원거리 1/${interval}` : "원거리 매프레임(대체)";
     return `${this.preset.level} ${this.sun.mapSize}×${this.sun.numCascades} ${this.preset.shadowFilter.toUpperCase()} ${per} bias ${s.sunBias.toFixed(4)}/${s.sunNormalBias.toFixed(3)} ${lantern} 캐스터 ${this.casters.size}`;
   }
@@ -253,11 +329,15 @@ export class ShadowSystem {
         const lg = new ShadowGenerator(p.lanternShadowMapSize, this.lanternLight);
         lg.usePoissonSampling = true;
         this.lanternGen = lg;
+        this.applied = null; // 새 생성기에 조정값을 다시 넣는다
         for (const [m, c] of this.casters) if (c.lantern) lg.addShadowCaster(m, false);
       }
+      const map = this.lanternGen.getShadowMap();
+      if (map) map.refreshRate = Math.max(1, Math.round(p.lanternShadowInterval));
     } else if (this.lanternGen) {
       this.lanternGen.dispose();
       this.lanternGen = null;
+      this.hookedLanternMap = null;
     }
   }
 

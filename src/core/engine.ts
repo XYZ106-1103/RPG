@@ -25,6 +25,9 @@ async function tryCreateWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUEngine 
       antialias: true,
       adaptToDeviceRatio: true,
       powerPreference: "high-performance",
+      // 어댑터가 지원하는 선택 기능을 모두 켠다 — 압축 텍스처(BC/ASTC: KTX2를 압축 상태로 올림), GPU 시간 측정(timestamp-query).
+      // (기본값은 아무 기능도 요청하지 않아 KTX2가 비압축 RGBA로 풀리고 GPU 시간도 잴 수 없다)
+      enableAllFeatures: true,
     });
     await engine.initAsync();
     return engine;

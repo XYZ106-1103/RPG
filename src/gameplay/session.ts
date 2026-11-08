@@ -37,6 +37,7 @@ import { SIM_HZ } from "../sim/time";
 import { SimWorld } from "../sim/world";
 import { DebugPanel, textBar } from "../ui/debugPanel";
 import { FpsMeter } from "../ui/fpsMeter";
+import { PerfProbe } from "../render/perfProbe";
 import type { InputDebugOverlay } from "../ui/inputDebug";
 import { LockOnMarker } from "../ui/lockOnMarker";
 import { PointerLockHint } from "../ui/pointerLockHint";
@@ -122,6 +123,7 @@ export class GameSession {
   private readonly lockHint = new PointerLockHint();
   private readonly panel = new DebugPanel("top-left") // 오른쪽 위는 ?tune GUI 자리;
   private readonly fps = new FpsMeter();
+  private readonly perf: PerfProbe;
   private readonly frame = createInputFrame();
   private readonly look = { x: 0, y: 0 };
   private readonly drained: SimEvent[] = [];
@@ -148,6 +150,7 @@ export class GameSession {
   ) {
     this.hero = hero;
     this.materials = new ViewMaterials(scene);
+    this.perf = new PerfProbe(scene.getEngine(), scene);
     for (const spawn of DUMMY_SPAWNS) {
       const entity = sim.spawn("training_dummy", "enemy", spawn, Math.PI);
       this.dummies.push({ entity, spawn: { ...spawn }, deadTicks: 0 });
@@ -230,6 +233,7 @@ export class GameSession {
 
   /** 고정 스텝 (60Hz) */
   fixedUpdate(dt: number): void {
+    const t0 = performance.now();
     const f = this.input.sampleFrame(this.sim.tick + 1, this.camera.viewYaw, this.frame, this.lockOn.targetId ?? 0);
     this.options.inputDebug?.recordFrame(f, performance.now());
     if (wasPressed(f, "lock_on")) f.lockTarget = this.lockOn.toggle() ?? 0;
@@ -252,10 +256,12 @@ export class GameSession {
       }
     }
     this.respawnDummies();
+    this.perf.addSim(performance.now() - t0);
   }
 
   /** 렌더 프레임 */
   render(alpha: number, frameSeconds: number): void {
+    const t0 = performance.now();
     const dt = frameSeconds;
     this.fps.update(dt);
     this.input.consumeLook(this.look);
@@ -288,6 +294,7 @@ export class GameSession {
       performance.now(),
     );
     this.scene.render();
+    this.perf.endFrame(performance.now() - t0);
   }
 
   viewFor(e: Readonly<Entity>): CharacterView {
@@ -313,12 +320,14 @@ export class GameSession {
           : new CharacterView(this.scene, this.materials, e);
       this.views.set(e.id, v);
       // 캐릭터 그림자: 모델은 LOD0 + 무기만 드리우고(LOD1/2는 같은 자리라 중복) 모든 LOD가 받는다. dispose되면 자동 해제
+      // 등불을 든 플레이어 본인은 등불 그림자에서 뺀다 (몸 바로 옆 광원 — 큐브 6면 비용만 들고 그림자가 어색하다)
+      const casterOpts = { lantern: e.id !== this.hero.id };
       if (v instanceof ModelCharacterView) {
         const lod0 = v.model.meshes.filter((m) => m.name.endsWith("_LOD0"));
-        this.gfx.shadows.addCaster(v.weaponMesh ? [...lod0, v.weaponMesh] : lod0);
+        this.gfx.shadows.addCaster(v.weaponMesh ? [...lod0, v.weaponMesh] : lod0, casterOpts);
         this.gfx.shadows.addReceiver(v.model.meshes);
       } else {
-        this.gfx.shadows.addCaster([v.body, v.nose, v.weapon]);
+        this.gfx.shadows.addCaster([v.body, v.nose, v.weapon], casterOpts);
         this.gfx.shadows.addReceiver([v.body, v.nose, v.weapon]);
       }
     }
@@ -373,6 +382,7 @@ export class GameSession {
     const release = this.lockOn.controller.lastReleaseReason;
     this.panel.setLines([
       `FPS ${this.fps.fps.toFixed(0).padStart(3)}  (최악 ${this.fps.worstFrameMs.toFixed(1)}ms)`,
+      `성능     ${this.perf.describe()}`,
       `상태     ${p?.state ?? "-"}${p?.action ? ` · ${p.action}` : ""}${p ? `  [${p.stateTick}]` : ""}`,
       `버퍼     ${p?.reserved ?? "-"}`,
       `체력     ${textBar(h.health / h.maxHealth)} ${h.health.toFixed(0)}`,
@@ -397,6 +407,7 @@ export class GameSession {
 
   dispose(): void {
     this.hitFeedback.dispose();
+    this.perf.dispose();
     this.panel.dispose();
     this.marker.dispose();
     this.lockHint.dispose();
