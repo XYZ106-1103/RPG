@@ -63,6 +63,11 @@ class AnimationNameTest(unittest.TestCase):
             "Standing Death Backward 01.fbx": "death",
             "Dying.fbx": "death",
             "Parry.fbx": "parry",
+            # 애니메이션이 든 GLB의 애니메이션 이름 (확장자 없음)
+            "Smash": "attack_heavy",
+            "Block": "guard",
+            "Roll": "roll_f",
+            "Drink": "drink",
             "Running Backward.fbx": None,
             "Salsa Dancing.fbx": None,
         }
@@ -78,6 +83,30 @@ class AnimationNameTest(unittest.TestCase):
         self.assertIn(("Idle.fbx", "idle"), g.conflicts)
         self.assertIn(("Slash 4.fbx", "attack_light_*"), g.conflicts)
         self.assertEqual(g.unresolved, ["Dance.fbx"])
+
+    def test_rule_names_kept(self):
+        for n in la.ALL_ANIMATION_NAMES:
+            self.assertEqual(la.guess_animation_name(n), n)
+        # hero_1.glb의 애니메이션 22개: 기존 9개는 추정, 새 13개는 규칙 이름 그대로
+        names = ["Block", "Drink", "Idle", "Roll", "Run", "SlashL", "SlashR", "Smash", "Walk", "attack_light_3", "attack_run", "backstep", "death",
+                 "hit_back", "hit_front", "parry", "roll_b", "sprint", "stagger", "walk_b", "walk_l", "walk_r"]
+        g = la.guess_mapping(names)
+        self.assertEqual(sorted(g.mapping.values()), sorted(la.ALL_ANIMATION_NAMES))
+        self.assertEqual((g.unresolved, g.conflicts), ([], []))
+        self.assertEqual(g.mapping["SlashR"], "attack_light_2")
+        self.assertEqual(g.mapping["attack_light_3"], "attack_light_3")
+
+    def test_light_numbers_skip_taken(self):
+        g = la.guess_mapping(["Slash A.fbx", "Slash B.fbx", "Slash C.fbx", "attack_light_1.fbx"])
+        self.assertEqual(g.mapping["attack_light_1.fbx"], "attack_light_1")
+        self.assertEqual(g.mapping["Slash A.fbx"], "attack_light_2")
+        self.assertEqual(g.mapping["Slash B.fbx"], "attack_light_3")
+        self.assertEqual(g.conflicts, [("Slash C.fbx", "attack_light_*")])
+
+    def test_rule_name_wins_conflict(self):
+        g = la.guess_mapping(["Slash Run.fbx", "attack_run.fbx"])
+        self.assertEqual(g.mapping, {"attack_run.fbx": "attack_run"})
+        self.assertEqual(g.conflicts, [("Slash Run.fbx", "attack_run")])
 
     def test_missing_and_validate(self):
         self.assertEqual(len(la.missing_animations(["idle", "walk_f"])), 20)

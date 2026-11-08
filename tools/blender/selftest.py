@@ -9,6 +9,9 @@
    가짜 애니메이션 5개 (Idle / Walking(앞으로 1.5m, In Place 아님) / Sword And Shield Slash / Hit Reaction / Dying)
    → merge (mapping.json 없음: 추정 후 확인 요청으로 멈추는지) → merge --accept-guess --root-motion
    검사: 이름 매핑, 길이, m 단위 변환, Walking만 루트 모션(+Z 1.5m) 추출, Hips 수평 이동 제거, 누락 목록
+3. 애니메이션이 든 GLB (hero.glb처럼 리그+애니메이션 한 파일, meshopt 압축):
+   optimize(meshopt) → decompress_glb → cleanup --type player --height 1.8 → merge --mapping (내장 애니메이션)
+   검사: 압축 해제, 애니메이션 유지와 길이(30fps), 키 변경 시 Hips 이동 키 보정, 규칙 이름 그대로 매핑
 """
 
 from __future__ import annotations
@@ -309,6 +312,81 @@ def test_merge(work: str) -> None:
     check(abs((max(dys) - min(dys)) - 0.8) < 0.02, f"death(In Place)의 Hips 이동은 그대로 ({max(dys) - min(dys):.3f}m)")
 
 
+def make_embedded_glb(path: str) -> None:
+    """리그 + 애니메이션 2개(NLA 트랙)를 GLB 한 파일로 — 단위 보정 없이 내보내 키 180(블렌더 단위)인 큰 모델이 된다"""
+    arm, _body = build_rig()
+    bpy.context.scene.unit_settings.scale_length = 1.0
+    bpy.context.scene.render.fps = 30
+    for name, fname, frames in (("Idle", "Idle.fbx", 61), ("walk_b", "Idle.fbx", 31)):
+        action = key_anim(arm, fname, frames)
+        action.name = name
+        track = arm.animation_data.nla_tracks.new()
+        track.name = name
+        track.strips.new(name, 0, action)
+        arm.animation_data.action = None
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_animation_mode="NLA_TRACKS", export_force_sampling=True)
+
+
+def test_embedded(work: str) -> None:
+    print("\n== 애니메이션이 든 GLB (decompress → cleanup → merge)", flush=True)
+    raw = os.path.join(work, "embedded_raw.glb")
+    make_embedded_glb(raw)
+    tools = os.path.join(HERE, "..")
+    src = raw
+    if shutil.which("node"):
+        packed = os.path.join(work, "embedded_meshopt.glb")
+        dec = os.path.join(work, "embedded_dec.glb")
+        r1 = subprocess.run(["node", os.path.join(tools, "optimize.mjs"), raw, packed, "--no-ktx2"], capture_output=True, text=True)
+        r2 = subprocess.run(["node", os.path.join(tools, "decompress_glb.mjs"), packed, dec], capture_output=True, text=True)
+        packed_ext = la.read_glb_json(packed).get("extensionsUsed", []) if r1.returncode == 0 else []
+        dec_ext = la.read_glb_json(dec).get("extensionsUsed", []) if r2.returncode == 0 else ["?"]
+        check(r1.returncode == 0 and "EXT_meshopt_compression" in packed_ext, "meshopt 압축 GLB 준비")
+        check(r2.returncode == 0 and "EXT_meshopt_compression" not in dec_ext and "KHR_mesh_quantization" not in dec_ext, f"decompress_glb: meshopt/양자화 해제 {dec_ext}")
+        src = dec
+    else:
+        print("  (node 없음 — 압축/해제 단계 건너뜀)", flush=True)
+    raw_g = la.read_glb_json(src)
+    raw_anims = dict(la.glb_animations(raw_g))
+
+    clean = os.path.join(work, "embedded_clean.glb")
+    report = os.path.join(work, "embedded_report.json")
+    r = run_script("cleanup_model.py", ["--input", src, "--type", "player", "--height", "1.8", "--out", clean, "--report-json", report])
+    check(r.returncode == 0, "cleanup (애니메이션 GLB) 종료 코드 0")
+    if r.returncode != 0:
+        return
+    rep = json.load(open(report, encoding="utf-8"))
+    anims = dict((n, d) for n, d in rep["animations"])
+    check(sorted(anims) == ["Idle", "walk_b"] and all(abs(anims[n] - raw_anims[n]) < 1e-3 for n in anims), f"cleanup 후 애니메이션 유지, 길이 그대로 {anims}")
+    check(abs(rep["height"] - 1.8) < 0.01, f"키 1.8m ({rep['height']:.3f})")
+    # 키를 바꾸면 Hips 이동 키도 같은 비율이어야 한다 (원본 키 → 1.8m 배율)
+    g, b = read_glb(clean)
+    hips = next(i for i, n in enumerate(g["nodes"]) if n.get("name", "").endswith("Hips"))
+    idle = next(a for a in g["animations"] if a["name"] == "Idle")
+    ch = next(c for c in idle["channels"] if c["target"].get("node") == hips and c["target"]["path"] == "translation")
+    ys = [v[1] for v in accessor_floats(g, b, idle["samplers"][ch["sampler"]]["output"])]
+    rg, rb = read_glb(src)
+    rhips = next(i for i, n in enumerate(rg["nodes"]) if n.get("name", "").endswith("Hips"))
+    ridle = next(a for a in rg["animations"] if a["name"] == "Idle")
+    rch = next(c for c in ridle["channels"] if c["target"].get("node") == rhips and c["target"]["path"] == "translation")
+    rys = [v[1] for v in accessor_floats(rg, rb, ridle["samplers"][rch["sampler"]]["output"])]
+    ratio = (max(ys) - min(ys)) / (max(rys) - min(rys))
+    want = 1.8 / rep["source_height"]
+    check(abs(ratio / want - 1) < 0.01, f"Hips 이동 키가 키 배율만큼 보정 (x{ratio:.5f}, 기대 x{want:.5f})")
+
+    mapping = os.path.join(work, "embedded_anims", "mapping.json")
+    out = os.path.join(work, "embedded_merged.glb")
+    base = ["--character", clean, "--mapping", mapping, "--out", out]
+    r = run_script("merge_animations.py", base)
+    guessed = json.load(open(mapping, encoding="utf-8")) if os.path.exists(mapping) else {}
+    check(r.returncode == 3 and guessed.get("Idle") == "idle" and guessed.get("walk_b") == "walk_b", "내장 애니메이션 이름으로 매핑 추정 (규칙 이름은 그대로) 후 확인 요청")
+    r = run_script("merge_animations.py", [*base, "--accept-guess"])
+    check(r.returncode == 0, "merge (내장 애니메이션) 종료 코드 0")
+    if r.returncode != 0:
+        return
+    merged = dict(la.glb_animations(la.read_glb_json(out)))
+    check(sorted(merged) == ["idle", "walk_b"] and abs(merged["idle"] - 2.0) < 0.01 and abs(merged["walk_b"] - 1.0) < 0.01, f"merge 결과 이름/길이 {merged}")
+
+
 def main() -> None:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     p = argparse.ArgumentParser(prog="selftest.py")
@@ -321,6 +399,7 @@ def main() -> None:
     try:
         test_cleanup(work)
         test_merge(work)
+        test_embedded(work)
     finally:
         failed = [label for ok, label in RESULTS if not ok]
         print(f"\n셀프테스트: {len(RESULTS) - len(failed)}/{len(RESULTS)} 통과", flush=True)

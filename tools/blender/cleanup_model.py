@@ -25,6 +25,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bl_util  # noqa: E402
 import lib_assets as la  # noqa: E402
 
 FORWARD_ANGLE = {"-y": 0.0, "+y": math.pi, "+x": -math.pi / 2, "-x": math.pi / 2}
@@ -39,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--height", type=float, help="실제 키(m)에 맞춰 균일 스케일")
     p.add_argument("--forward", choices=sorted(FORWARD_ANGLE), default="-y", help="원본 모델이 보는 방향 (블렌더 축). 기본 -y = 이미 glTF 정면")
     p.add_argument("--merge-distance", type=float, default=0.0001)
+    p.add_argument("--fps", type=int, default=30, help="애니메이션 프레임레이트 (가져오기 전에 맞춰야 마지막 프레임이 잘리지 않는다)")
     p.add_argument("--report-json")
     return p.parse_args(argv)
 
@@ -106,13 +108,24 @@ def select_only(objs: list[bpy.types.Object]) -> None:
 
 def apply_transforms(location: bool) -> None:
     objs = [o for o in bpy.context.scene.objects if o.type in ("MESH", "ARMATURE", "EMPTY")]
+    # 아마추어 스케일을 적용하면 레스트 본은 커지지만 본 이동 애니메이션 키는 그대로라 같은 비율로 보정한다
+    arm_scale = {o: o.matrix_world.to_scale().x for o in objs if o.type == "ARMATURE"}
     select_only(objs)
     bpy.ops.object.transform_apply(location=location, rotation=True, scale=True)
+    for arm, s in arm_scale.items():
+        for action in bl_util.armature_actions(arm):
+            bl_util.scale_location_keys(action, s)
 
 
-def clean_geometry(dist: float) -> int:
+def clean_geometry(dist: float) -> tuple[int, list[str]]:
+    """중복 정점 병합 + 노멀 재계산. 직접 만든 노멀(custom normals)이 있는 메시는 이미 정리된 것으로 보고 건너뛴다
+    (병합/재계산하면 원래 음영이 바뀐다)."""
     removed = 0
+    kept: list[str] = []
     for o in mesh_objects():
+        if o.data.has_custom_normals:
+            kept.append(o.name)
+            continue
         bm = bmesh.new()
         bm.from_mesh(o.data)
         before = len(bm.verts)
@@ -122,7 +135,7 @@ def clean_geometry(dist: float) -> int:
         bm.to_mesh(o.data)
         bm.free()
         o.data.update()
-    return removed
+    return removed, kept
 
 
 def transform_roots(matrix: Matrix) -> None:
@@ -196,6 +209,16 @@ def resize_textures(max_size: int) -> list[dict]:
     return out
 
 
+def limit_skin_weights(objs: list[bpy.types.Object], limit: int = 4) -> None:
+    """정점당 본 영향 4개로 제한 + 정규화 (glTF 기본 JOINTS_0/WEIGHTS_0). LOD 데시메이트는 정점을 합치며 영향 수를 늘린다."""
+    for o in objs:
+        if not o.vertex_groups or not any(m.type == "ARMATURE" for m in o.modifiers):
+            continue
+        select_only([o])
+        bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=limit)
+        bpy.ops.object.vertex_group_normalize_all(group_select_mode="ALL", lock_active=False)
+
+
 def export_glb(path: str) -> None:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     bpy.ops.export_scene.gltf(
@@ -215,17 +238,23 @@ def main() -> None:
     args = parse_args()
     budget = la.BUDGETS[args.type]
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.context.scene.render.fps = args.fps
+    bpy.context.scene.render.fps_base = 1.0
     import_model(args.input)
+    shapes = bl_util.remove_bone_shapes()
+    bl_util.set_rest_pose(True)
+    arms = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
+    anim_count = sum(len(bl_util.armature_actions(a)) for a in arms)
     meshes = mesh_objects()
     if not meshes:
         raise SystemExit("메시가 없습니다.")
     tris_in = tri_count(meshes)
-    log(f"입력: {args.input}  메시 {len(meshes)}개, 삼각형 {tris_in:,}")
+    log(f"입력: {args.input}  메시 {len(meshes)}개, 삼각형 {tris_in:,}, 아마추어 {len(arms)}개, 애니메이션 {anim_count}개{f', 본 표시 도형 {shapes}개 제거' if shapes else ''}")
 
     # 1. 트랜스폼 적용 + 정점 병합/노멀
     apply_transforms(location=False)
-    removed = clean_geometry(args.merge_distance)
-    log(f"정리: 중복 정점 {removed:,}개 병합, 노멀 재계산")
+    removed, kept = clean_geometry(args.merge_distance)
+    log(f"정리: 중복 정점 {removed:,}개 병합, 노멀 재계산" + (f" (직접 만든 노멀 유지: {', '.join(kept)})" if kept else ""))
 
     # 2. 정면 → 스케일 → 원점(발밑 중앙)
     angle = FORWARD_ANGLE[args.forward]
@@ -233,6 +262,7 @@ def main() -> None:
         transform_roots(Matrix.Rotation(angle, 4, "Z"))
     lo, hi = world_bounds(meshes)
     height = hi.z - lo.z
+    source_height = height
     if args.height:
         s = args.height / height if height > 0 else 1.0
         transform_roots(Matrix.Scale(s, 4))
@@ -251,12 +281,15 @@ def main() -> None:
     lod0 = decimate_to(meshes, budget.lod0_tris)
     lods = make_lods(meshes, lod0)
     counts = {lv: tri_count(objs) for lv, objs in lods.items()}
+    limit_skin_weights([o for objs in lods.values() for o in objs])
 
     # 4. 텍스처
     textures = resize_textures(budget.max_texture)
 
+    bl_util.set_rest_pose(False)
     export_glb(args.out)
     gltf = la.read_glb_json(args.out)
+    out_anims = la.glb_animations(gltf)
 
     ok = counts[0] <= budget.lod0_tris
     log("")
@@ -270,13 +303,17 @@ def main() -> None:
     for t in textures:
         log(f"  텍스처 {t['name']}: {t['before'][0]}x{t['before'][1]} → {t['after'][0]}x{t['after'][1]}")
     log(f"  GLB 메시 노드: {', '.join(la.glb_mesh_nodes(gltf))}")
+    if anim_count or out_anims:
+        log(f"  애니메이션 {len(out_anims)}개 유지: " + ", ".join(f"{n} {d:.2f}초" for n, d in out_anims))
+        if len(out_anims) < anim_count:
+            log(f"✗ 애니메이션이 줄었습니다 ({anim_count} → {len(out_anims)})")
     if not ok:
         log(f"✗ LOD0이 예산을 넘었습니다 ({counts[0]:,} > {budget.lod0_tris:,})")
 
     if args.report_json:
         with open(args.report_json, "w", encoding="utf-8") as fh:
             json.dump(
-                {"type": args.type, "input_tris": tris_in, "lods": counts, "height": height, "bottom": lo.z, "center_xy": [(lo.x + hi.x) / 2, (lo.y + hi.y) / 2], "textures": textures, "nodes": la.glb_mesh_nodes(gltf)},
+                {"type": args.type, "animations": out_anims, "source_height": source_height, "input_tris": tris_in, "lods": counts, "height": height, "bottom": lo.z, "center_xy": [(lo.x + hi.x) / 2, (lo.y + hi.y) / 2], "textures": textures, "nodes": la.glb_mesh_nodes(gltf)},
                 fh,
                 ensure_ascii=False,
                 indent=2,

@@ -1,8 +1,10 @@
 """
 믹사모 애니메이션 병합 (CLAUDE.md "믹사모 애니메이션 병합") — 블렌더 헤드리스로 실행.
 
-  node tools/blender/run.mjs merge -- --character raw/models/<이름>/<이름>_rigged.fbx --anims raw/animations/<이름> \
+  믹사모: node tools/blender/run.mjs merge -- --character raw/models/<이름>/<이름>_rigged.fbx --anims raw/animations/<이름> \
       --out raw/models/<이름>/<이름>.glb [--mapping <mapping.json>] [--root-motion] [--accept-guess] [--optimize public/assets/characters/<이름>.glb]
+  애니메이션이 든 GLB: node tools/blender/run.mjs merge -- --character <리그+애니메이션.glb> --mapping raw/animations/<이름>/mapping.json \
+      --out <출력.glb> [...]   (--anims 없이 — GLB 안의 애니메이션 이름이 mapping의 키)
 
 1. 리깅본을 불러오고 FBX의 cm 단위를 m로 (아마추어 스케일 적용 + 본 이동 키도 같은 비율로)
 2. mapping.json(원본 파일명 → 이름 규칙)대로 각 애니메이션 FBX의 액션을 캐릭터 아마추어로 옮긴다
@@ -28,7 +30,9 @@ import bpy
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bl_util  # noqa: E402
 import lib_assets as la  # noqa: E402
+from bl_util import action_fcurves, scale_location_keys  # noqa: E402
 
 FPS = 30
 EXIT_NEEDS_CONFIRM = 3
@@ -38,9 +42,9 @@ def parse_args() -> argparse.Namespace:
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     p = argparse.ArgumentParser(prog="merge_animations.py", description="믹사모 애니메이션을 리깅본에 병합해 GLB 하나로")
     p.add_argument("--character", required=True, help="믹사모 리깅본 FBX (<이름>_rigged.fbx)")
-    p.add_argument("--anims", required=True, help="애니메이션 FBX 폴더 (Without Skin)")
+    p.add_argument("--anims", help="애니메이션 FBX 폴더 (Without Skin). 생략하면 --character GLB 안의 애니메이션을 쓴다")
     p.add_argument("--out", required=True, help="출력 GLB")
-    p.add_argument("--mapping", help="기본: <anims>/mapping.json")
+    p.add_argument("--mapping", help="기본: <anims>/mapping.json (GLB 내장 애니메이션이면 필수)")
     p.add_argument("--root-motion", action="store_true", help="In Place가 아닌 애니메이션의 Hips XZ 이동을 루트 모션으로 분리")
     p.add_argument("--accept-guess", action="store_true", help="추정한 mapping을 확인 없이 사용")
     p.add_argument("--optimize", metavar="FINAL_GLB", help="내보낸 뒤 tools/optimize.mjs로 최적화해 이 경로에 저장")
@@ -55,19 +59,6 @@ def log(msg: str) -> None:
 # 액션 F커브 (블렌더 4.4+의 슬롯 액션과 이전 API 모두 지원)
 
 
-def action_fcurves(action: bpy.types.Action) -> list:
-    layers = getattr(action, "layers", None)
-    if layers:
-        out = []
-        for layer in layers:
-            for strip in layer.strips:
-                for bag in getattr(strip, "channelbags", []):
-                    out.extend(bag.fcurves)
-        if out:
-            return out
-    return list(getattr(action, "fcurves", []))
-
-
 def assign_action(obj: bpy.types.Object, action: bpy.types.Action | None) -> None:
     if obj.animation_data is None:
         obj.animation_data_create()
@@ -75,16 +66,6 @@ def assign_action(obj: bpy.types.Object, action: bpy.types.Action | None) -> Non
     if action is not None and hasattr(obj.animation_data, "action_slot") and getattr(action, "slots", None):
         if obj.animation_data.action_slot is None and len(action.slots):
             obj.animation_data.action_slot = action.slots[0]
-
-
-def scale_location_keys(action: bpy.types.Action, factor: float) -> None:
-    for fc in action_fcurves(action):
-        if fc.data_path.endswith(".location"):
-            for kp in fc.keyframe_points:
-                kp.co.y *= factor
-                kp.handle_left.y *= factor
-                kp.handle_right.y *= factor
-            fc.update()
 
 
 def bone_prefix(arm: bpy.types.Object) -> str:
@@ -144,6 +125,7 @@ def delete_objects(objs: list[bpy.types.Object]) -> None:
 
 
 def load_mapping(args: argparse.Namespace, files: list[str]) -> dict[str, str | None]:
+    """files: 믹사모면 FBX 파일명, GLB 내장이면 애니메이션 이름"""
     path = args.mapping or os.path.join(args.anims, "mapping.json")
     if os.path.exists(path):
         with open(path, encoding="utf-8") as fh:
@@ -167,6 +149,7 @@ def load_mapping(args: argparse.Namespace, files: list[str]) -> dict[str, str | 
         data["_conflicts"] = [f"{f} → {n} (이미 사용됨)" for f, n in g.conflicts]
     for f in files:
         data[f] = g.mapping.get(f)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)
     log(f"mapping.json이 없어 파일명으로 추정해 작성했습니다: {path}")
@@ -230,52 +213,27 @@ def extract_root_motion(arm: bpy.types.Object, action: bpy.types.Action, hips_na
 
 def main() -> None:
     args = parse_args()
-    files = sorted(f for f in os.listdir(args.anims) if f.lower().endswith(".fbx"))
-    if not files:
-        raise SystemExit(f"애니메이션 FBX가 없습니다: {args.anims}")
-    mapping = load_mapping(args, files)
+    embedded = args.anims is None
+    if embedded and (not args.character.lower().endswith((".glb", ".gltf")) or not args.mapping):
+        raise SystemExit("--anims 없이 쓰려면 --character가 애니메이션이 든 GLB/glTF이고 --mapping을 지정해야 합니다.")
+    files: list[str] = []
+    mapping: dict[str, str | None] = {}
+    if not embedded:
+        files = sorted(f for f in os.listdir(args.anims) if f.lower().endswith(".fbx"))
+        if not files:
+            raise SystemExit(f"애니메이션 FBX가 없습니다: {args.anims}")
+        mapping = load_mapping(args, files)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
-    scene.render.fps = FPS
+    scene.render.fps = FPS  # 가져오기 전에 맞춰야 glTF 애니메이션(초)이 30fps 프레임으로 들어온다
     scene.render.fps_base = 1.0
 
-    # 1. 리깅본
-    char_objs = import_fbx(args.character)
-    arm = armature_of(char_objs, args.character)
-    char_factor = apply_armature_scale(arm)
-    prefix = bone_prefix(arm)
-    hips = prefix + "Hips"
-    for a in list(bpy.data.actions):  # 리깅본에 딸려 온 T포즈 등은 쓰지 않는다
-        bpy.data.actions.remove(a)
-    assign_action(arm, None)
-    log(f"리깅본: {args.character}  아마추어 '{arm.name}', 본 {len(arm.data.bones)}개, 단위 x{char_factor:g} 적용, 접두사 '{prefix}'")
-
-    # 2. 애니메이션
     merged: list[tuple[str, bpy.types.Action]] = []
     root_motion: dict[str, dict] = {}
     in_place: list[str] = []
-    for f in files:
-        name = mapping.get(f)
-        if not name:
-            log(f"  건너뜀: {f}")
-            continue
-        objs = import_fbx(os.path.join(args.anims, f))
-        src_arm = armature_of(objs, f)
-        action = src_arm.animation_data.action if src_arm.animation_data else None
-        if action is None:
-            delete_objects(objs)
-            raise SystemExit(f"애니메이션이 없습니다: {f}")
-        factor = src_arm.scale.x
-        action.use_fake_user = True  # 원본 아마추어를 지워도 액션은 남긴다
-        delete_objects(objs)
-        keep = {m[1] for m in merged} | {action}
-        for a in list(bpy.data.actions):  # 같은 파일에서 딸려 온 다른 액션 정리
-            if a not in keep and a.users == 0:
-                bpy.data.actions.remove(a)
-        action.name = name
-        scale_location_keys(action, factor)
-        rename_bone_paths(action, bone_prefix_from_action(action), prefix)
+
+    def finish_action(label: str, name: str, action: bpy.types.Action) -> None:
         moved = ""
         if args.root_motion:
             stays, track = extract_root_motion(arm, action, hips)
@@ -285,8 +243,75 @@ def main() -> None:
             elif stays:
                 in_place.append(name)
         s, e = action.frame_range
-        log(f"  {f:<45} → {name:<16} {(e - s) / FPS:5.2f}초{moved}")
+        log(f"  {label:<45} → {name:<16} {(e - s) / FPS:5.2f}초{moved}")
         merged.append((name, action))
+
+    if embedded:
+        # 1. 리그 + 애니메이션이 든 GLB (이미 m 단위)
+        bpy.ops.import_scene.gltf(filepath=args.character)
+        bl_util.remove_bone_shapes()
+        arms = [o for o in scene.objects if o.type == "ARMATURE"]
+        if not arms:
+            raise SystemExit(f"아마추어가 없습니다: {args.character}")
+        arm = arms[0]
+        prefix = bone_prefix(arm)
+        hips = prefix + "Hips"
+        actions = {a.name: a for a in bl_util.armature_actions(arm)}
+        if not actions:
+            raise SystemExit(f"GLB에 애니메이션이 없습니다: {args.character}")
+        log(f"캐릭터: {args.character}  아마추어 '{arm.name}', 본 {len(arm.data.bones)}개, 내장 애니메이션 {len(actions)}개")
+        mapping = load_mapping(args, sorted(actions))
+        while arm.animation_data.nla_tracks:
+            arm.animation_data.nla_tracks.remove(arm.animation_data.nla_tracks[0])
+        assign_action(arm, None)
+        # 이름이 겹치면 블렌더가 .001을 붙이므로 임시 이름을 거쳐 바꾼다
+        for key, action in actions.items():
+            action.name = f"__src__{key}"
+        for key in sorted(actions):
+            action = actions[key]
+            name = mapping.get(key)
+            if not name:
+                log(f"  건너뜀: {key}")
+                bpy.data.actions.remove(action)
+                continue
+            action.name = name
+            action.use_fake_user = True
+            finish_action(key, name, action)
+    else:
+        # 1. 믹사모 리깅본
+        char_objs = import_fbx(args.character)
+        arm = armature_of(char_objs, args.character)
+        char_factor = apply_armature_scale(arm)
+        prefix = bone_prefix(arm)
+        hips = prefix + "Hips"
+        for a in list(bpy.data.actions):  # 리깅본에 딸려 온 T포즈 등은 쓰지 않는다
+            bpy.data.actions.remove(a)
+        assign_action(arm, None)
+        log(f"리깅본: {args.character}  아마추어 '{arm.name}', 본 {len(arm.data.bones)}개, 단위 x{char_factor:g} 적용, 접두사 '{prefix}'")
+
+        # 2. 애니메이션 FBX
+        for f in files:
+            name = mapping.get(f)
+            if not name:
+                log(f"  건너뜀: {f}")
+                continue
+            objs = import_fbx(os.path.join(args.anims, f))
+            src_arm = armature_of(objs, f)
+            action = src_arm.animation_data.action if src_arm.animation_data else None
+            if action is None:
+                delete_objects(objs)
+                raise SystemExit(f"애니메이션이 없습니다: {f}")
+            factor = src_arm.scale.x
+            action.use_fake_user = True  # 원본 아마추어를 지워도 액션은 남긴다
+            delete_objects(objs)
+            keep = {m[1] for m in merged} | {action}
+            for a in list(bpy.data.actions):  # 같은 파일에서 딸려 온 다른 액션 정리
+                if a not in keep and a.users == 0:
+                    bpy.data.actions.remove(a)
+            action.name = name
+            scale_location_keys(action, factor)
+            rename_bone_paths(action, bone_prefix_from_action(action), prefix)
+            finish_action(f, name, action)
 
     if not merged:
         raise SystemExit("병합할 애니메이션이 없습니다.")

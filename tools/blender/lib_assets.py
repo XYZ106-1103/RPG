@@ -94,7 +94,10 @@ def _has(w: str, *keys: str) -> bool:
 
 def guess_animation_name(filename: str) -> str | None:
     """믹사모 파일명 하나 → 이름 규칙 (공격 약공 번호는 guess_mapping이 매긴다: 'attack_light'로 돌려준다)"""
-    w = _words(os.path.splitext(os.path.basename(filename))[0])
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    if stem in ALL_ANIMATION_NAMES:  # 이미 이름 규칙대로면 그대로 (walk_b의 'b'를 방향으로 못 읽는 문제 방지)
+        return stem
+    w = _words(stem)
     back = _has(w, "back", "backward", "backwards")
     left = _has(w, "left")
     right = _has(w, "right")
@@ -114,6 +117,8 @@ def guess_animation_name(filename: str) -> str | None:
         return "backstep"
     if _has(w, "roll", "dodge", "evade", "dive"):
         return "roll_b" if back else "roll_f"
+    if _has(w, "smash", "slam"):
+        return "attack_heavy"
     attack = _has(w, "attack", "slash", "swing", "punch", "stab", "combo", "strike", "melee")
     if attack and _has(w, "run", "running", "sprint"):
         return "attack_run"
@@ -158,7 +163,13 @@ def guess_mapping(filenames: list[str]) -> MappingGuess:
     lights: list[str] = []
     for f in sorted(filenames):
         name = guess_animation_name(f)
-        if name is None:
+        if name in ALL_ANIMATION_NAMES and name in mapping.values() and os.path.splitext(f)[0] == name:
+            # 규칙 이름 그대로인 원본이 우선 — 추정으로 먼저 차지한 쪽을 충돌로 돌린다
+            prev = next(k for k, v in mapping.items() if v == name)
+            del mapping[prev]
+            conflicts.append((prev, name))
+            mapping[f] = name
+        elif name is None:
             unresolved.append(f)
         elif name == "attack_light":
             lights.append(f)
@@ -167,9 +178,10 @@ def guess_mapping(filenames: list[str]) -> MappingGuess:
         else:
             mapping[f] = name
     lights.sort(key=lambda f: (_number_in(f), f))
-    for i, f in enumerate(lights):
-        if i < 3:
-            mapping[f] = f"attack_light_{i + 1}"
+    free = [n for n in ("attack_light_1", "attack_light_2", "attack_light_3") if n not in mapping.values()]
+    for f in lights:
+        if free:
+            mapping[f] = free.pop(0)
         else:
             conflicts.append((f, "attack_light_*"))
     return MappingGuess(mapping, unresolved, conflicts)
