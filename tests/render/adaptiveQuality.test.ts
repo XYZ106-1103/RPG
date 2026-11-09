@@ -58,11 +58,27 @@ describe("자동 품질: 제어", () => {
     expect(aq.describe("high")).toBe("자동 품질 −4 (볼류메트릭 끔·SSAO 끔·블룸 저해상도·프리셋 한 단계 아래)");
   });
 
-  it("상한 해상도 + 여유(예산 75% 미만)가 10초 이어지면 한 단계씩 복귀", () => {
+  it("상한 해상도 + 여유(예산 75% 미만)가 20초 이어지면 한 단계씩 복귀", () => {
     const aq = new AdaptiveQuality();
     aq.step = 2;
-    const changes = run(aq, 8, 40, ctx({ atFloor: false, atMax: true }));
+    const changes = run(aq, 8, 60, ctx({ atFloor: false, atMax: true }));
     expect(changes).toEqual([1, 0]);
+  });
+
+  it("출렁임 방지: 되돌린 뒤 곧 다시 무거워지면 그 단계에 고정하고 더는 올리지 않는다", () => {
+    const aq = new AdaptiveQuality();
+    aq.step = 2;
+    // 여유 → 1단계로 되돌림
+    expect(run(aq, 8, 30, ctx({ atFloor: false, atMax: true }))).toEqual([1]);
+    // 되돌리자마자 무거움 → 다시 2단계 (고정)
+    expect(run(aq, 20, 10, ctx())).toEqual([2]);
+    expect(aq.describe("high")).toMatch(/고정$/);
+    // 이후 여유가 길어도 올리지 않는다
+    expect(run(aq, 8, 120, ctx({ atFloor: false, atMax: true }))).toEqual([]);
+    // 사용자가 프리셋을 바꾸면 고정 해제
+    aq.reset();
+    aq.step = 2;
+    expect(run(aq, 8, 30, ctx({ atFloor: false, atMax: true }))).toEqual([1]);
   });
 
   it("예산 근처(75~105%)에서는 오르내리지 않는다", () => {

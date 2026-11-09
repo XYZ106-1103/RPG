@@ -7,7 +7,9 @@
  * 그 프리셋에서 아무것도 바꾸지 못하는 단계(예: Medium의 볼류메트릭은 원래 꺼짐)는 건너뛴다.
  *
  * 내림: 해상도가 하한이고 측정값이 예산을 3초 넘게 넘으면 (단계를 바꾼 뒤 4초는 판단하지 않음 — 효과 재구성·해상도 안정화)
- * 복귀: 해상도가 상한까지 돌아왔고 측정값이 예산의 75% 아래로 10초 넘게 이어지면
+ * 복귀: 해상도가 상한까지 돌아왔고 측정값이 예산의 75% 아래로 20초 넘게 이어지면
+ * 출렁임 방지: 되돌린 뒤 60초 안에 다시 내려가야 했다면 그 단계에 고정한다 (이번 실행 동안 더 올리지 않음) —
+ *   단계를 바꿀 때마다 그림자/효과 셰이더를 새로 만들어 끊기므로, 오르내림 반복은 성능보다 더 나쁘다
  */
 import { QUALITY_LEVELS, QUALITY_PRESETS, type QualityLevel, type QualityPreset } from "./quality";
 import type { MeasureSource } from "./dynamicResolution";
@@ -22,7 +24,9 @@ export const ADAPTIVE_STEP_LABELS = ["볼류메트릭 끔", "SSAO 끔", "블룸 
 export const MAX_ADAPTIVE_STEP = ADAPTIVE_STEP_LABELS.length;
 
 const DOWN_AFTER = 3;
-const UP_AFTER = 10;
+const UP_AFTER = 20;
+/** 되돌린 뒤 이 시간 안에 다시 내려가면 그 단계에 고정 */
+const RELAPSE_WINDOW = 60;
 const SETTLE = 4;
 /** GPU 측정 예산 = 목표 프레임 시간의 90% (dynamicResolution.ts와 같은 기준) */
 const GPU_BUDGET = 0.9;
@@ -83,6 +87,10 @@ export class AdaptiveQuality {
   private over = 0;
   private under = 0;
   private sinceChange = 99;
+  /** 마지막으로 되돌린 뒤 지난 시간 (되돌린 적 없으면 큰 값) */
+  private sinceRaise = 999;
+  /** 이 단계 밑으로는 되돌리지 않는다 (출렁임 방지 고정) */
+  private floorStep = 0;
 
   constructor(settings: Partial<AdaptiveQualitySettings> = {}) {
     this.settings = { ...DEFAULT_ADAPTIVE_QUALITY, ...settings };
@@ -91,6 +99,8 @@ export class AdaptiveQuality {
   /** 사용자가 프리셋을 바꿨을 때 — 자동 단계 없이 다시 시작 */
   reset(): void {
     this.step = 0;
+    this.floorStep = 0;
+    this.sinceRaise = 999;
     this.over = 0;
     this.under = 0;
     this.sinceChange = 0;
@@ -104,23 +114,31 @@ export class AdaptiveQuality {
       return 0;
     }
     this.sinceChange += dt;
+    this.sinceRaise += dt;
     if (ms === null || !(ms > 0) || this.sinceChange < SETTLE) return null;
     const frameBudget = 1000 / Math.max(10, ctx.targetFps);
     const overBudget = source === "gpu" ? ms > frameBudget * GPU_BUDGET * 1.05 : ms > frameBudget * 1.15;
     const roomy = source === "gpu" ? ms < frameBudget * GPU_BUDGET * 0.75 : ms < frameBudget * 1.03;
 
     this.over = ctx.atFloor && overBudget ? this.over + dt : 0;
-    this.under = this.step > 0 && ctx.atMax && roomy ? this.under + dt : 0;
+    this.under = this.step > this.floorStep && ctx.atMax && roomy ? this.under + dt : 0;
 
     if (this.over >= DOWN_AFTER) {
       const next = nextEffectiveStep(ctx.level, this.step, 1);
       this.over = 0;
-      if (next !== this.step) return this.change(next);
+      if (next !== this.step) {
+        // 방금 되돌렸는데 다시 무거워졌다 → 이 단계에서 멈춘다
+        if (this.sinceRaise < RELAPSE_WINDOW) this.floorStep = next;
+        return this.change(next);
+      }
     }
     if (this.under >= UP_AFTER) {
-      const next = nextEffectiveStep(ctx.level, this.step, -1);
+      const next = Math.max(this.floorStep, nextEffectiveStep(ctx.level, this.step, -1));
       this.under = 0;
-      if (next !== this.step) return this.change(next);
+      if (next !== this.step) {
+        this.sinceRaise = 0;
+        return this.change(next);
+      }
     }
     return null;
   }
@@ -131,7 +149,7 @@ export class AdaptiveQuality {
     if (this.step === 0) return "자동 품질 0";
     const labels: string[] = [];
     for (let s = 1; s <= this.step; s++) if (!same(adaptPreset(level, s), adaptPreset(level, s - 1))) labels.push(ADAPTIVE_STEP_LABELS[s - 1] ?? "");
-    return `자동 품질 −${labels.length} (${labels.join("·")})`;
+    return `자동 품질 −${labels.length} (${labels.join("·")})${this.floorStep > 0 && this.step <= this.floorStep ? " 고정" : ""}`;
   }
 
   private change(step: number): number {
