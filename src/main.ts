@@ -52,6 +52,7 @@ async function main(): Promise<void> {
       quality: session.gfx.quality,
       lighting: session.gfx.lighting.settings,
       shadows: session.gfx.shadows.settings,
+      postFx: session.gfx.postFx.settings,
       shadowFilter: {
         get: () => session.gfx.shadows.filterOverride,
         set: (v) => {

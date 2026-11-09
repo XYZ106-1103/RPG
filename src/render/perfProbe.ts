@@ -31,6 +31,15 @@ export class PerfProbe {
     this.sceneInst = new SceneInstrumentation(scene);
   }
 
+  /** 프레임 전체 GPU 시간 측정 켜기/끄기 (WebGL2에서 패스별 측정(F5)과 쿼리가 겹치지 않게) */
+  setFrameCapture(on: boolean): void {
+    try {
+      this.engineInst.captureGPUFrameTime = on;
+    } catch {
+      // 확장이 없으면 무시
+    }
+  }
+
   /** 고정 스텝 한 번의 시간 (한 프레임에 여러 번 돌 수 있어 합산) */
   addSim(ms: number): void {
     this.simAccum += ms;

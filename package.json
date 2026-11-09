@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e:input": "node tools/e2e/input-smoke.mjs",
+    "e2e:postfx": "node tools/e2e/postfx-smoke.mjs",
     "check:credits": "node tools/check_credits.mjs",
     "assets:polyhaven": "node tools/fetch_polyhaven.mjs",
     "assets:ambientcg": "node tools/fetch_ambientcg.mjs",

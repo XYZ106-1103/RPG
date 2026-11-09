@@ -30,6 +30,9 @@ async function tryCreateWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUEngine 
       enableAllFeatures: true,
     });
     await engine.initAsync();
+    // GPU 시간 측정(타임스탬프)을 처음부터 켠다 — 렌더 타깃은 만들어질 때 측정 카운터를 얻으므로,
+    // 나중에 켜면 그 전에 만든 그림자 맵 등은 패스별 시간(F5)에 잡히지 않는다. 기능이 없으면 Babylon이 무시한다
+    engine.enableGPUTimingMeasurements = true;
     return engine;
   } catch (err) {
     console.warn("[engine] WebGPU 초기화 실패, WebGL2로 폴백합니다.", err);

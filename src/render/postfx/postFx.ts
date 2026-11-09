@@ -13,6 +13,7 @@
 import type { Camera } from "@babylonjs/core/Cameras/camera";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import type { RenderTargetWrapper } from "@babylonjs/core/Engines/renderTargetWrapper";
 import type { PointLight } from "@babylonjs/core/Lights/pointLight";
 import type { PrePassEffectConfiguration } from "@babylonjs/core/Rendering/prePassEffectConfiguration";
 import { ShaderLanguage } from "@babylonjs/core/Materials/shaderLanguage";
@@ -136,6 +137,7 @@ export class PostFxSystem {
   private readonly lutTexture: RawTexture3D;
   private lutBytes: Uint8Array;
   private bloom: BloomEffect | null = null;
+  private ssao: SSAO2RenderingPipeline | null = null;
   private dof: DepthOfFieldEffect | null = null;
   private look: RegionLook | null = null;
   private time = 0;
@@ -204,6 +206,10 @@ export class PostFxSystem {
       this.bloom.threshold = look.bloomThreshold;
       this.bloom.weight = look.bloomWeight;
     }
+    if (this.ssao) {
+      this.ssao.totalStrength = this.settings.ssaoStrength;
+      this.ssao.radius = this.settings.ssaoRadius;
+    }
     if (this.dof) {
       this.dof.focusDistance = Math.max(0.5, focusDistance) * 1000;
       this.dof.fStop = this.settings.dofFStop;
@@ -221,6 +227,11 @@ export class PostFxSystem {
     const chain = this.plan.active.map((id) => POSTFX_LABELS[id]).join(" › ");
     const off = this.plan.disabled.map((d) => `${POSTFX_LABELS[d.id]}(${d.reason})`);
     return `${this.caps.backend} ${chain}${off.length ? `  미지원: ${off.join(", ")}` : ""}`;
+  }
+
+  /** 프리패스 MRT (패스별 GPU 시간 — 씬이 여기에 그려진다) */
+  prePassTarget(): RenderTargetWrapper | null {
+    return this.scene.prePassRenderer?.getRenderTarget()?.renderTarget ?? null;
   }
 
   /** 지금 붙어 있는 효과별 패스 (정해진 순서) */
@@ -267,6 +278,7 @@ export class PostFxSystem {
           u.dispose();
           this.units.delete(id);
           if (id === "bloom") this.bloom = null;
+          if (id === "ssao") this.ssao = null;
           if (id === "dof") this.dof = null;
         }
       }
@@ -342,6 +354,7 @@ export class PostFxSystem {
         ssao.radius = this.settings.ssaoRadius;
         ssao.maxZ = 80;
         ssao.expensiveBlur = p.ssao.samples >= 32;
+        this.ssao = ssao;
         return pipelineUnit(scene, ssao);
       }
       case "ssr": {

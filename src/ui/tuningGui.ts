@@ -13,6 +13,7 @@ import type { FeelSettings, ShakePreset } from "../gameplay/feel/feelSettings";
 import { LIGHTING_REVISION, type LightingSettings } from "../render/lighting";
 import { QUALITY_LEVELS, SHADOW_FILTER_OVERRIDES, type QualityManager, type ShadowFilterOverride } from "../render/quality";
 import type { ShadowSettings } from "../render/shadows";
+import type { PostFxSettings } from "../render/postfx/postFx";
 
 const STORAGE_KEY = "ashen-lantern.tuning.v1";
 
@@ -27,6 +28,7 @@ export interface TuningTargets {
   quality: QualityManager;
   lighting: LightingSettings;
   shadows: ShadowSettings;
+  postFx: PostFxSettings;
   /** 태양 그림자 필터 강제 (비교용, 저장하지 않음 — 디버그 F4와 같은 값) */
   shadowFilter: { get(): ShadowFilterOverride; set(v: ShadowFilterOverride): void };
 }
@@ -36,6 +38,7 @@ interface Snapshot {
   lightingRev: number;
   lighting: LightingSettings;
   shadows: ShadowSettings;
+  postFx: PostFxSettings;
   feel: FeelSettings;
   camera: CameraSettings;
   shake: ShakeSettings;
@@ -44,7 +47,7 @@ interface Snapshot {
 }
 
 function snapshot(t: TuningTargets): Snapshot {
-  return structuredClone({ lightingRev: LIGHTING_REVISION, lighting: t.lighting, shadows: t.shadows, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
+  return structuredClone({ lightingRev: LIGHTING_REVISION, lighting: t.lighting, shadows: t.shadows, postFx: t.postFx, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
 }
 
 /** 저장된 값을 대상 객체에 덮어쓴다 (키가 같은 숫자/불리언만 — 구조가 바뀌어도 안전하게) */
@@ -69,6 +72,7 @@ function load(t: TuningTargets): void {
     const s = saved as Partial<Record<keyof Snapshot, unknown>>;
     if (s.lightingRev === LIGHTING_REVISION) assignKnown(t.lighting, s.lighting);
     assignKnown(t.shadows, s.shadows);
+    assignKnown(t.postFx, s.postFx);
     assignKnown(t.feel, s.feel);
     assignKnown(t.camera, s.camera);
     assignKnown(t.shake, s.shake);
@@ -114,6 +118,7 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
   lf.add(L, "lanternIntensity", 0, 20, 0.1).name("등불 강도");
   lf.add(L, "lanternRange", 2, 40, 0.5).name("등불 범위 (m)");
   lf.add(L, "lanternFlicker", 0, 0.2, 0.005).name("등불 깜빡임");
+  lf.add(L, "lanternGlow", 0, 30, 0.5).name("등불 불꽃 발광 (블룸)");
   lf.addColor(L, "lanternColor").name("등불 색");
   lf.add(L, "iblIntensity", 0, 0.5, 0.005).name("환경광(IBL)");
   lf.add(L, "skyLevel", 0, 0.5, 0.005).name("하늘 밝기");
@@ -147,6 +152,19 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
   sf.add(S, "lanternNormalBias", 0, 0.2, 0.001).name("등불 normalBias");
   sf.add(S, "lanternDarkness", 0, 1, 0.01).name("등불 그림자 밝기");
   sf.close();
+
+  const P = t.postFx;
+  const pf = gui.addFolder("후처리");
+  pf.add(P, "volumetricStrength", 0, 5, 0.05).name("등불 안개 산란");
+  pf.add(P, "volumetricAnisotropy", 0, 0.9, 0.01).name("산란 방향성 (g)");
+  pf.add(P, "vignetteStrength", 0, 1, 0.01).name("비네팅 세기");
+  pf.add(P, "vignetteRadius", 0.1, 1, 0.01).name("비네팅 반경");
+  pf.add(P, "vignetteSoftness", 0.05, 1, 0.01).name("비네팅 부드러움");
+  pf.add(P, "grainIntensity", 0, 0.2, 0.005).name("그레인");
+  pf.add(P, "ssaoStrength", 0, 3, 0.05).name("SSAO 세기");
+  pf.add(P, "ssaoRadius", 0.1, 5, 0.05).name("SSAO 반경");
+  pf.add(P, "dofFStop", 0.5, 16, 0.1).name("DOF 조리개 (Ultra)");
+  pf.close();
 
   const f = t.feel;
   const hs = gui.addFolder("히트스톱");
@@ -239,6 +257,7 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
       reset: () => {
         assignKnown(t.lighting, defaults.lighting);
         assignKnown(t.shadows, defaults.shadows);
+        assignKnown(t.postFx, defaults.postFx);
         assignKnown(t.feel, defaults.feel);
         assignKnown(t.camera, defaults.camera);
         assignKnown(t.shake, defaults.shake);

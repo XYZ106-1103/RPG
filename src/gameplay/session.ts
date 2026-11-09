@@ -41,6 +41,7 @@ import { SimWorld } from "../sim/world";
 import { DebugPanel, textBar } from "../ui/debugPanel";
 import { FpsMeter } from "../ui/fpsMeter";
 import { PerfProbe } from "../render/perfProbe";
+import { PassTimer } from "../render/passTimer";
 import type { InputDebugOverlay } from "../ui/inputDebug";
 import { LockOnMarker } from "../ui/lockOnMarker";
 import { PointerLockHint } from "../ui/pointerLockHint";
@@ -129,6 +130,7 @@ export class GameSession {
   private readonly panel = new DebugPanel("top-left") // 오른쪽 위는 ?tune GUI 자리;
   private readonly fps = new FpsMeter();
   private readonly perf: PerfProbe;
+  private readonly passTimer: PassTimer;
   private readonly frame = createInputFrame();
   private readonly look = { x: 0, y: 0 };
   private readonly drained: SimEvent[] = [];
@@ -156,6 +158,15 @@ export class GameSession {
     this.hero = hero;
     this.materials = new ViewMaterials(scene);
     this.perf = new PerfProbe(scene.getEngine(), scene);
+    this.passTimer = new PassTimer(scene.getEngine(), scene, camera.camera, {
+      groups: () => gfx.postFx.passGroups(),
+      shadowMaps: () => [
+        { label: "태양 그림자", map: gfx.shadows.sun.getShadowMap() },
+        { label: "등불 그림자", map: gfx.shadows.lanternGen?.getShadowMap() ?? null },
+      ],
+      prePassTarget: () => gfx.postFx.prePassTarget(),
+      setFrameCapture: (on) => this.perf.setFrameCapture(on),
+    });
     for (const spawn of DUMMY_SPAWNS) {
       const entity = sim.spawn("training_dummy", "enemy", spawn, Math.PI);
       this.dummies.push({ entity, spawn: { ...spawn }, deadTicks: 0 });
@@ -178,6 +189,8 @@ export class GameSession {
     bindDebugKey("F3", () => this.setDebug(!this.physicsDebug.enabled));
     // F4: 태양 그림자 필터 비교 (프리셋 → PCF 강제 → PCSS 강제)
     bindDebugKey("F4", () => gfx.shadows.cycleFilterOverride());
+    // F5: 패스별 GPU 시간 (측정 비용이 있어 켰을 때만)
+    bindDebugKey("F5", () => this.passTimer.toggle());
 
     physics.onTriggerEnter.add((e) => {
       if (e.other === characters.bodyOf(hero.id)) this.inTrigger = true;
@@ -317,6 +330,7 @@ export class GameSession {
       performance.now(),
     );
     this.scene.render();
+    this.passTimer.update();
     this.perf.endFrame(performance.now() - t0);
   }
 
@@ -413,11 +427,12 @@ export class GameSession {
       `스태미나 ${textBar(h.stamina / h.maxStamina)} ${h.stamina.toFixed(0)}`,
       `락온     ${lockEntity ? `#${lockEntity.id} ${lockEntity.archetype} (${lockEntity.health.toFixed(0)})` : "-"}${!lockEntity && release ? `  해제: ${release}` : ""}`,
       `접지     ${this.characters.get(h.id)?.groundState ?? "-"}  트리거 ${this.inTrigger ? "안" : "밖"}`,
-      `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}  F4 그림자 필터 비교`,
+      `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}  F4 그림자 필터 비교  F5 패스별 GPU 시간`,
       this.animLine(),
       `그림자   ${this.gfx.shadows.describe()}`,
       `후처리   ${this.gfx.postFx.describe()}`,
       `지역     ${this.gfx.regions.describe()}`,
+      ...this.passTimer.lines(),
       `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}  카메라 ${((this.camera.viewYaw * 180) / Math.PI).toFixed(0)}°`,
       "",
       ...this.eventLog,
@@ -434,6 +449,7 @@ export class GameSession {
   dispose(): void {
     this.hitFeedback.dispose();
     this.perf.dispose();
+    this.passTimer.dispose();
     this.panel.dispose();
     this.marker.dispose();
     this.lockHint.dispose();
