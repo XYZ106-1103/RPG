@@ -21,12 +21,13 @@ async function main(): Promise<void> {
   const canvas = document.getElementById("renderCanvas");
   if (!(canvas instanceof HTMLCanvasElement)) throw new Error("#renderCanvas 캔버스를 찾을 수 없습니다.");
 
-  const { engine } = await createEngine(canvas);
+  const { engine, backend, gpuName, fallbackReason, software } = await createEngine(canvas);
   const input = new InputManager(canvas);
   const session = await GameSession.create(engine, canvas, input, {
     interpolate: !params.has("nointerp"),
     physicsDebugOnStart: params.has("physicsdebug"),
     inputDebug: params.has("inputdebug") ? new InputDebugOverlay() : null,
+    renderInfo: { backend, gpuName, fallbackReason, software },
   });
 
   const loop = new GameLoop(
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
       lighting: session.gfx.lighting.settings,
       shadows: session.gfx.shadows.settings,
       postFx: session.gfx.postFx.settings,
+      dynamicResolution: session.dynRes.settings,
       shadowFilter: {
         get: () => session.gfx.shadows.filterOverride,
         set: (v) => {

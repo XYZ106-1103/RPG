@@ -51,6 +51,8 @@ export interface PassTimerSources {
   prePassTarget(): RenderTargetWrapper | null;
   /** 프레임 전체 GPU 시간 측정 켜기/끄기 (WebGL2에서 쿼리가 겹치지 않게) */
   setFrameCapture(on: boolean): void;
+  /** 프레임 전체 GPU 시간 (ms, 모르면 null) — 패스 합계와의 차이(기타)를 보여 준다 */
+  frameGpuMs(): number | null;
 }
 
 const NS_TO_MS = 1e-6;
@@ -116,7 +118,10 @@ export class PassTimer {
     const items = this.order.map((l) => [l, this.avgs.get(l)?.ms ?? 0] as const);
     const total = items.reduce((s, [, v]) => s + v, 0);
     const parts = items.map(([l, v]) => `${l} ${v.toFixed(2)}`);
-    const rows: string[] = [`GPU 패스 (F5, ms)  합계 ${total.toFixed(2)}${items.length === 0 ? "  측정 중…" : ""}`];
+    const frame = this.src.frameGpuMs();
+    // 패스로 잡히지 않는 GPU 작업(밉맵 생성, 복사 등)이나 타이머 한계(타일 방식 GPU)로 생기는 차이
+    const other = frame !== null ? `  프레임 GPU ${frame.toFixed(2)} · 기타 ${Math.max(0, frame - total).toFixed(2)}` : "";
+    const rows: string[] = [`GPU 패스 (F5, ms)  합계 ${total.toFixed(2)}${other}${items.length === 0 ? "  측정 중…" : ""}`];
     for (let i = 0; i < parts.length; i += 4) rows.push(`  ${parts.slice(i, i + 4).join(" · ")}`);
     return rows;
   }

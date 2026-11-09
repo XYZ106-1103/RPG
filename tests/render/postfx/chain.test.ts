@@ -40,6 +40,12 @@ describe("후처리 체인", () => {
     expect(plan.disabled).toEqual([{ id: "taa", reason: "WebGPU: 속도 버퍼 오류(Babylon)" }]);
   });
 
+  it("WebGL2는 경량화: TAA → FXAA (나머지는 프리셋대로)", () => {
+    const plan = planChain(QUALITY_PRESETS.high, resolveSupport({ ...FULL, backend: "WebGL2" }, ALL));
+    expect(plan.active).toEqual(["ssao", "volumetric", "bloom", "imageProcessing", "fxaa", "finish"]);
+    expect(plan.disabled).toEqual([{ id: "taa", reason: "WebGL2: 경량화 — FXAA로 대체" }]);
+  });
+
   it("Babylon 자체 검사 실패도 반영", () => {
     const plan = planChain(QUALITY_PRESETS.ultra, resolveSupport(FULL, { ...ALL, ssr: false }));
     expect(plan.active).not.toContain("ssr");

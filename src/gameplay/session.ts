@@ -42,6 +42,7 @@ import { DebugPanel, textBar } from "../ui/debugPanel";
 import { FpsMeter } from "../ui/fpsMeter";
 import { PerfProbe } from "../render/perfProbe";
 import { PassTimer } from "../render/passTimer";
+import { DynamicResolution } from "../render/dynamicResolution";
 import type { InputDebugOverlay } from "../ui/inputDebug";
 import { LockOnMarker } from "../ui/lockOnMarker";
 import { PointerLockHint } from "../ui/pointerLockHint";
@@ -75,6 +76,8 @@ export interface SessionOptions {
   interpolate: boolean;
   physicsDebugOnStart: boolean;
   inputDebug: InputDebugOverlay | null;
+  /** 렌더 백엔드 정보 (디버그 패널 표시) */
+  renderInfo?: { backend: string; gpuName: string; fallbackReason: string | null; software: boolean };
 }
 
 /** 연습용 허수아비 배치 (플레이어는 원점에서 +Z를 보고 시작) */
@@ -131,6 +134,8 @@ export class GameSession {
   private readonly fps = new FpsMeter();
   private readonly perf: PerfProbe;
   private readonly passTimer: PassTimer;
+  readonly dynRes = new DynamicResolution();
+  private readonly softwareNotice: HTMLDivElement | null = null;
   private readonly frame = createInputFrame();
   private readonly look = { x: 0, y: 0 };
   private readonly drained: SimEvent[] = [];
@@ -158,6 +163,20 @@ export class GameSession {
     this.hero = hero;
     this.materials = new ViewMaterials(scene);
     this.perf = new PerfProbe(scene.getEngine(), scene);
+    // 동적 해상도: 프리셋 렌더 스케일에서 시작
+    this.dynRes.scale = gfx.quality.current.renderScale;
+    scene.getEngine().setHardwareScalingLevel(1 / this.dynRes.scale);
+    if (options.renderInfo?.software) {
+      // 소프트웨어 렌더링: 브라우저 GPU 가속이 꺼져 있다 (Chrome은 GPU 프로세스가 충돌하면 그 실행 동안 끈다)
+      const el = document.createElement("div");
+      el.textContent = "⚠ 브라우저 GPU 가속이 꺼져 있습니다 (소프트웨어 렌더링) — 브라우저를 완전히 종료 후 다시 실행해 주세요";
+      Object.assign(el.style, {
+        position: "fixed", top: "8px", left: "50%", transform: "translateX(-50%)", zIndex: "30",
+        padding: "6px 12px", background: "rgba(120,30,20,0.85)", color: "#fff", font: "13px sans-serif", borderRadius: "4px", pointerEvents: "none",
+      });
+      document.body.appendChild(el);
+      this.softwareNotice = el;
+    }
     this.passTimer = new PassTimer(scene.getEngine(), scene, camera.camera, {
       groups: () => gfx.postFx.passGroups(),
       shadowMaps: () => [
@@ -166,6 +185,7 @@ export class GameSession {
       ],
       prePassTarget: () => gfx.postFx.prePassTarget(),
       setFrameCapture: (on) => this.perf.setFrameCapture(on),
+      frameGpuMs: () => this.perf.gpuMs,
     });
     for (const spawn of DUMMY_SPAWNS) {
       const entity = sim.spawn("training_dummy", "enemy", spawn, Math.PI);
@@ -223,7 +243,7 @@ export class GameSession {
         // 무시
       }
     });
-    quality.subscribe(["renderScale"], (p) => engine.setHardwareScalingLevel(1 / p.renderScale));
+    // 렌더 해상도는 동적 해상도(세션)가 프리셋의 renderScale을 상한으로 조절한다
     const lighting = new Lighting(scene);
     await lighting.loadEnvironment(`${import.meta.env.BASE_URL}assets/hdri/night_overcast.env`);
     // 물리 → 캐릭터 컨트롤러(이동 포트) → 무기 스윕(HitQuery) → sim
@@ -321,6 +341,11 @@ export class GameSession {
     this.gfx.lighting.update(dt, this.lanternOn);
     this.gfx.shadows.update();
     this.gfx.postFx.update(dt, look, Math.hypot(cp.x - hp.x, cp.y - hp.y - 1, cp.z - hp.z)); // DOF 초점 = 카메라 ~ 플레이어 가슴
+
+    // 동적 해상도: GPU 프레임 시간(없으면 프레임 시간)으로 렌더 배율 조절
+    const gpuMs = this.perf.gpuMs;
+    const nextScale = this.dynRes.update(gpuMs ?? dt * 1000, gpuMs !== null ? "gpu" : "frame", dt, this.gfx.quality.current.renderScale);
+    if (nextScale !== null) engine.setHardwareScalingLevel(1 / nextScale);
 
     this.updatePanel();
     this.lockHint.update({ pointerLocked: this.input.isPointerLocked, failed: this.input.pointerLockFailed, usingGamepad: this.input.activeDevice === "gamepad" });
@@ -421,6 +446,7 @@ export class GameSession {
     this.panel.setLines([
       `FPS ${this.fps.fps.toFixed(0).padStart(3)}  (최악 ${this.fps.worstFrameMs.toFixed(1)}ms)`,
       `성능     ${this.perf.describe()}`,
+      `렌더     ${this.renderLine()}`,
       `상태     ${p?.state ?? "-"}${p?.action ? ` · ${p.action}` : ""}${p ? `  [${p.stateTick}]` : ""}`,
       `버퍼     ${p?.reserved ?? "-"}`,
       `체력     ${textBar(h.health / h.maxHealth)} ${h.health.toFixed(0)}`,
@@ -439,6 +465,18 @@ export class GameSession {
     ]);
   }
 
+  private renderLine(): string {
+    const ri = this.options.renderInfo;
+    const engine = this.scene.getEngine();
+    const canvas = engine.getRenderingCanvas();
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio : 1;
+    const d = this.dynRes;
+    const res = `해상도 ${Math.round(d.scale * 100)}%${d.settings.enabled ? ` 자동(목표 ${d.settings.targetFps}fps, 하한 ${Math.round(d.settings.minScale * 100)}%)` : ""}`;
+    const size = `화면 ${canvas?.clientWidth ?? 0}×${canvas?.clientHeight ?? 0} → 렌더 ${engine.getRenderWidth()}×${engine.getRenderHeight()} (DPR ${dpr})`;
+    const why = ri?.fallbackReason ? `  WebGPU 안 씀: ${ri.fallbackReason}` : "";
+    return `${ri?.backend ?? "?"} · ${ri?.gpuName ?? "?"}${ri?.software ? " (소프트웨어!)" : ""} · ${size} · ${res}${why}`;
+  }
+
   private animLine(): string {
     const v = this.views.get(this.hero.id);
     if (!(v instanceof ModelCharacterView)) return "애니     (모델 없음 — 캡슐)";
@@ -453,6 +491,7 @@ export class GameSession {
     this.panel.dispose();
     this.marker.dispose();
     this.lockHint.dispose();
+    this.softwareNotice?.remove();
     this.sweepDebug.dispose();
     this.physicsDebug.dispose();
   }

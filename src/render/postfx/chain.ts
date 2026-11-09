@@ -7,7 +7,18 @@
  */
 import type { QualityPreset } from "../quality";
 
-export const POSTFX_ORDER = ["ssao", "ssr", "volumetric", "taa", "motionBlur", "bloom", "dof", "imageProcessing", "fxaa", "finish"] as const;
+export const POSTFX_ORDER = [
+  "ssao",
+  "ssr",
+  "volumetric",
+  "taa",
+  "motionBlur",
+  "bloom",
+  "dof",
+  "imageProcessing",
+  "fxaa",
+  "finish",
+] as const;
 export type PostFxId = (typeof POSTFX_ORDER)[number];
 
 export const POSTFX_LABELS: Readonly<Record<PostFxId, string>> = {
@@ -53,22 +64,43 @@ export interface Support {
 const yes: Support = { ok: true, reason: "" };
 const no = (reason: string): Support => ({ ok: false, reason });
 
-export function resolveSupport(caps: GpuCaps, probes: EffectProbes): Record<PostFxId, Support> {
+export function resolveSupport(
+  caps: GpuCaps,
+  probes: EffectProbes,
+): Record<PostFxId, Support> {
   const be = caps.backend;
   const mrt = caps.multiRenderTargets ? yes : no(`${be}: 다중 렌더 타깃 없음`);
   return {
-    ssao: !caps.multiRenderTargets ? mrt : probes.ssao2 ? yes : no(`${be}: SSAO2 미지원`),
-    ssr: !caps.multiRenderTargets ? mrt : !caps.halfFloatRender ? no(`${be}: 반정밀 렌더 타깃 없음`) : probes.ssr ? yes : no(`${be}: SSR 미지원`),
-    volumetric: mrt,
-    taa: !caps.halfFloatRender
-      ? no(`${be}: 반정밀 렌더 타깃 없음`)
-      : !caps.velocityPrePass
-        ? no(`${be}: 속도 버퍼 오류(Babylon)`)
-        : probes.taa
+    ssao: !caps.multiRenderTargets
+      ? mrt
+      : probes.ssao2
+        ? yes
+        : no(`${be}: SSAO2 미지원`),
+    ssr: !caps.multiRenderTargets
+      ? mrt
+      : !caps.halfFloatRender
+        ? no(`${be}: 반정밀 렌더 타깃 없음`)
+        : probes.ssr
           ? yes
-          : no(`${be}: TAA 미지원`),
+          : no(`${be}: SSR 미지원`),
+    volumetric: mrt,
+    // WebGL2(Safari 등)는 같은 GPU에서도 더 무겁다 — 속도 버퍼 프리패스가 드는 TAA 대신 FXAA (경량화)
+    taa:
+      be === "WebGL2"
+        ? no("WebGL2: 경량화 — FXAA로 대체")
+        : !caps.halfFloatRender
+          ? no(`${be}: 반정밀 렌더 타깃 없음`)
+          : !caps.velocityPrePass
+            ? no(`${be}: 속도 버퍼 오류(Babylon)`)
+            : probes.taa
+              ? yes
+              : no(`${be}: TAA 미지원`),
     fxaa: yes,
-    motionBlur: !caps.multiRenderTargets ? mrt : probes.motionBlur ? yes : no(`${be}: 모션 블러 미지원`),
+    motionBlur: !caps.multiRenderTargets
+      ? mrt
+      : probes.motionBlur
+        ? yes
+        : no(`${be}: 모션 블러 미지원`),
     bloom: yes,
     dof: yes,
     imageProcessing: yes,
@@ -97,7 +129,10 @@ export interface ChainPlan {
 }
 
 /** 프리셋 + 지원 여부 → 실제 체인. TAA가 안 되면 FXAA로 대체한다 */
-export function planChain(p: Readonly<QualityPreset>, support: Readonly<Record<PostFxId, Support>>): ChainPlan {
+export function planChain(
+  p: Readonly<QualityPreset>,
+  support: Readonly<Record<PostFxId, Support>>,
+): ChainPlan {
   const want = wantedEffects(p);
   const disabled: ChainPlan["disabled"] = [];
   for (const id of want) {

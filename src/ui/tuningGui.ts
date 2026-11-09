@@ -14,6 +14,7 @@ import { LIGHTING_REVISION, type LightingSettings } from "../render/lighting";
 import { QUALITY_LEVELS, SHADOW_FILTER_OVERRIDES, type QualityManager, type ShadowFilterOverride } from "../render/quality";
 import type { ShadowSettings } from "../render/shadows";
 import type { PostFxSettings } from "../render/postfx/postFx";
+import type { DynamicResolutionSettings } from "../render/dynamicResolution";
 
 const STORAGE_KEY = "ashen-lantern.tuning.v1";
 
@@ -29,6 +30,7 @@ export interface TuningTargets {
   lighting: LightingSettings;
   shadows: ShadowSettings;
   postFx: PostFxSettings;
+  dynamicResolution: DynamicResolutionSettings;
   /** 태양 그림자 필터 강제 (비교용, 저장하지 않음 — 디버그 F4와 같은 값) */
   shadowFilter: { get(): ShadowFilterOverride; set(v: ShadowFilterOverride): void };
 }
@@ -39,6 +41,7 @@ interface Snapshot {
   lighting: LightingSettings;
   shadows: ShadowSettings;
   postFx: PostFxSettings;
+  dynamicResolution: DynamicResolutionSettings;
   feel: FeelSettings;
   camera: CameraSettings;
   shake: ShakeSettings;
@@ -47,7 +50,7 @@ interface Snapshot {
 }
 
 function snapshot(t: TuningTargets): Snapshot {
-  return structuredClone({ lightingRev: LIGHTING_REVISION, lighting: t.lighting, shadows: t.shadows, postFx: t.postFx, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
+  return structuredClone({ lightingRev: LIGHTING_REVISION, lighting: t.lighting, shadows: t.shadows, postFx: t.postFx, dynamicResolution: t.dynamicResolution, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
 }
 
 /** 저장된 값을 대상 객체에 덮어쓴다 (키가 같은 숫자/불리언만 — 구조가 바뀌어도 안전하게) */
@@ -73,6 +76,7 @@ function load(t: TuningTargets): void {
     if (s.lightingRev === LIGHTING_REVISION) assignKnown(t.lighting, s.lighting);
     assignKnown(t.shadows, s.shadows);
     assignKnown(t.postFx, s.postFx);
+    assignKnown(t.dynamicResolution, s.dynamicResolution);
     assignKnown(t.feel, s.feel);
     assignKnown(t.camera, s.camera);
     assignKnown(t.shake, s.shake);
@@ -110,6 +114,13 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
       const lv = QUALITY_LEVELS.find((l) => l === v);
       if (lv) t.quality.setLevel(lv);
     });
+
+  const D = t.dynamicResolution;
+  const df = gui.addFolder("동적 해상도");
+  df.add(D, "enabled").name("켜기 (끄면 프리셋 해상도)");
+  df.add(D, "targetFps", 30, 144, 1).name("목표 fps");
+  df.add(D, "minScale", 0.5, 1, 0.05).name("해상도 하한");
+  df.close();
 
   const L = t.lighting;
   const lf = gui.addFolder("조명");
@@ -258,6 +269,7 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
         assignKnown(t.lighting, defaults.lighting);
         assignKnown(t.shadows, defaults.shadows);
         assignKnown(t.postFx, defaults.postFx);
+        assignKnown(t.dynamicResolution, defaults.dynamicResolution);
         assignKnown(t.feel, defaults.feel);
         assignKnown(t.camera, defaults.camera);
         assignKnown(t.shake, defaults.shake);
