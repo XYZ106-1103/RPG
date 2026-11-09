@@ -2,10 +2,8 @@
  * 자동 품질 단계 (Babylon 비의존): 동적 해상도를 하한까지 내려도 GPU 예산을 넘으면 효과를 한 단계씩 줄이고,
  * 여유가 오래 이어지면 한 단계씩 되돌린다. 사용자가 고른 프리셋(레벨)은 그대로 두고 그 위에서 임시로만 낮춘다.
  *
- * 단계 (화면 손실이 적은 순서). 그림자는 맵을 그리는 비용보다 모든 픽셀이 조회하는 비용(씬 패스)이 커서 먼저 줄인다
- *   1 등불 그림자 끔(3인칭에서는 거의 안 보임) → 2 태양 그림자 필터 품질 한 단계 아래 → 3 태양 캐스케이드 4 → 3
- *   → 4 볼류메트릭 끔 → 5 SSAO 끔 → 6 프리셋 한 단계 아래 (1~5 유지)
- * (블룸 저해상도 단계는 실측에서 효과가 없어 뺐다)
+ * 단계 (화면 선명도를 덜 해치는 순서)
+ *   1 볼류메트릭 끔 → 2 SSAO 끔 → 3 블룸 저해상도 → 4 프리셋 한 단계 아래 (효과는 1~3 유지)
  * 그 프리셋에서 아무것도 바꾸지 못하는 단계(예: Medium의 볼류메트릭은 원래 꺼짐)는 건너뛴다.
  *
  * 내림: 해상도가 하한이고 측정값이 예산을 3초 넘게 넘으면 (단계를 바꾼 뒤 4초는 판단하지 않음 — 효과 재구성·해상도 안정화)
@@ -20,7 +18,7 @@ export interface AdaptiveQualitySettings {
 
 export const DEFAULT_ADAPTIVE_QUALITY: AdaptiveQualitySettings = { enabled: true };
 
-export const ADAPTIVE_STEP_LABELS = ["등불 그림자 끔", "태양 그림자 필터 ↓", "태양 캐스케이드 3", "볼류메트릭 끔", "SSAO 끔", "프리셋 한 단계 아래"] as const;
+export const ADAPTIVE_STEP_LABELS = ["볼류메트릭 끔", "SSAO 끔", "블룸 저해상도", "프리셋 한 단계 아래"] as const;
 export const MAX_ADAPTIVE_STEP = ADAPTIVE_STEP_LABELS.length;
 
 const DOWN_AFTER = 3;
@@ -36,16 +34,11 @@ function lowerLevel(level: QualityLevel): QualityLevel {
 
 /** 사용자 레벨 + 자동 단계 → 실제로 쓸 프리셋 (level 필드는 사용자 레벨 그대로) */
 export function adaptPreset(level: QualityLevel, step: number): QualityPreset {
-  const base = structuredClone(QUALITY_PRESETS[step >= 6 ? lowerLevel(level) : level]);
+  const base = structuredClone(QUALITY_PRESETS[step >= 4 ? lowerLevel(level) : level]);
   const p: QualityPreset = { ...base, level };
-  if (step >= 1) p.lanternShadow = false;
-  if (step >= 2) p.shadowFilterQuality = p.shadowFilterQuality === "high" ? "medium" : "low";
-  if (step >= 3) {
-    p.shadowCascades = Math.min(p.shadowCascades, 3);
-    p.farCascadeInterval = Math.max(p.farCascadeInterval, 3);
-  }
-  if (step >= 4) p.volumetric = { enabled: false, samples: 0 };
-  if (step >= 5) p.ssao = { enabled: false, samples: 0 };
+  if (step >= 1) p.volumetric = { enabled: false, samples: 0 };
+  if (step >= 2) p.ssao = { enabled: false, samples: 0 };
+  if (step >= 3) p.bloom = { ...p.bloom, kernel: Math.min(p.bloom.kernel, 32), scale: Math.min(p.bloom.scale, 0.25) };
   return p;
 }
 

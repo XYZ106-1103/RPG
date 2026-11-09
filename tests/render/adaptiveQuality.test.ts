@@ -17,29 +17,23 @@ describe("자동 품질: 프리셋 계산", () => {
     expect(adaptPreset("high", 0)).toEqual(QUALITY_PRESETS.high);
   });
 
-  it("High: 1 등불 그림자 → 2 필터 품질 → 3 캐스케이드 → 4 볼류메트릭 → 5 SSAO → 6 Medium 값 (레벨 이름은 high 유지)", () => {
-    expect(adaptPreset("high", 1).lanternShadow).toBe(false);
-    expect(adaptPreset("high", 1).shadowFilterQuality).toBe("high");
-    expect(adaptPreset("high", 2).shadowFilterQuality).toBe("medium");
-    expect(adaptPreset("high", 2).shadowCascades).toBe(4);
-    expect(adaptPreset("high", 3).shadowCascades).toBe(3);
-    expect(adaptPreset("high", 3).farCascadeInterval).toBe(3);
-    expect(adaptPreset("high", 3).volumetric.enabled).toBe(true);
-    expect(adaptPreset("high", 4).volumetric.enabled).toBe(false);
-    expect(adaptPreset("high", 4).ssao.enabled).toBe(true);
-    expect(adaptPreset("high", 5).ssao.enabled).toBe(false);
-    const s6 = adaptPreset("high", 6);
-    expect(s6.level).toBe("high");
-    expect(s6.renderScale).toBe(QUALITY_PRESETS.medium.renderScale);
-    expect(s6.shadowFilterQuality).toBe("low"); // Medium(중간)에서 한 단계 더
-    expect(s6.ssao.enabled).toBe(false);
+  it("High: 1 볼류메트릭 끔 → 2 SSAO 끔 → 3 블룸 저해상도 → 4 Medium 값 (레벨 이름은 high 유지)", () => {
+    expect(adaptPreset("high", 1).volumetric.enabled).toBe(false);
+    expect(adaptPreset("high", 1).ssao.enabled).toBe(true);
+    expect(adaptPreset("high", 2).ssao.enabled).toBe(false);
+    expect(adaptPreset("high", 3).bloom).toEqual({ enabled: true, kernel: 32, scale: 0.25 });
+    const s4 = adaptPreset("high", 4);
+    expect(s4.level).toBe("high");
+    expect(s4.shadowCascades).toBe(QUALITY_PRESETS.medium.shadowCascades);
+    expect(s4.ssao.enabled).toBe(false);
   });
 
-  it("바뀌는 것이 없는 단계는 건너뛴다 (Medium은 등불 그림자·볼류메트릭이 원래 꺼짐)", () => {
+  it("바뀌는 것이 없는 단계는 건너뛴다 (Medium은 볼류메트릭이 원래 꺼짐)", () => {
     expect(nextEffectiveStep("medium", 0, 1)).toBe(2);
-    expect(nextEffectiveStep("medium", 3, 1)).toBe(5);
-    expect(nextEffectiveStep("medium", 5, -1)).toBe(2); // 2~4는 Medium에서 같은 결과 → 가장 낮은 2로
+    expect(nextEffectiveStep("medium", 2, -1)).toBe(0);
     expect(nextEffectiveStep("high", 0, 1)).toBe(1);
+    // Low에서 4단계(한 단계 아래 = Low 그대로)는 3단계와 같다
+    expect(nextEffectiveStep("low", 3, 1)).toBe(3);
   });
 });
 
@@ -57,11 +51,11 @@ describe("자동 품질: 제어", () => {
     expect(run(aq, 25, 20, ctx({ atFloor: false }))).toEqual([]);
   });
 
-  it("계속 무거우면 끝까지(6) 내려가고 더는 없음", () => {
+  it("계속 무거우면 끝까지(4) 내려가고 더는 없음", () => {
     const aq = new AdaptiveQuality();
-    run(aq, 30, 90, ctx());
-    expect(aq.step).toBe(6);
-    expect(aq.describe("high")).toBe("자동 품질 −6 (등불 그림자 끔·태양 그림자 필터 ↓·태양 캐스케이드 3·볼류메트릭 끔·SSAO 끔·프리셋 한 단계 아래)");
+    run(aq, 30, 60, ctx());
+    expect(aq.step).toBe(4);
+    expect(aq.describe("high")).toBe("자동 품질 −4 (볼류메트릭 끔·SSAO 끔·블룸 저해상도·프리셋 한 단계 아래)");
   });
 
   it("상한 해상도 + 여유(예산 75% 미만)가 10초 이어지면 한 단계씩 복귀", () => {
