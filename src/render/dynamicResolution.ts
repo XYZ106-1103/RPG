@@ -5,6 +5,7 @@
  *    원하는 배율 = 지금 배율 × √(예산 / 측정값).
  *  - 해상도를 바꾸면 후처리 렌더 타깃을 모두 다시 만들므로 자주 바꾸지 않는다:
  *    0.05 단위로만, 내릴 때는 최소 1초, 올릴 때는 최소 3초 간격, 바꾼 직후 1초는 측정값을 버린다(안정화).
+ *  - 하한 80%: 그 밑은 흐림·계단이 눈에 띈다 — 더 무거우면 자동 품질 단계(adaptiveQuality.ts)가 효과를 줄인다.
  *  - 측정값은 GPU 프레임 시간(가능할 때). 없으면(Safari 등) 프레임 시간 — 이때는 수직 동기화로 16.7ms에 묶이므로
  *    목표 fps보다 확실히 느릴 때만 내리고, 목표에 붙어 있으면 천천히 올려 본다.
  */
@@ -19,8 +20,11 @@ export interface DynamicResolutionSettings {
 export const DEFAULT_DYNAMIC_RESOLUTION: DynamicResolutionSettings = {
   enabled: true,
   targetFps: 60,
-  minScale: 0.6,
+  minScale: 0.8,
 };
+
+/** 기본값을 바꾸면 올린다 — ?tune에 저장된 예전 동적 해상도 값을 버리고 새 기본값으로 시작 */
+export const DYNAMIC_RESOLUTION_REVISION = 2;
 
 export type MeasureSource = "gpu" | "frame";
 

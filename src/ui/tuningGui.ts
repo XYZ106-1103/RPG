@@ -14,7 +14,7 @@ import { LIGHTING_REVISION, type LightingSettings } from "../render/lighting";
 import { QUALITY_LEVELS, SHADOW_FILTER_OVERRIDES, type QualityManager, type ShadowFilterOverride } from "../render/quality";
 import type { ShadowSettings } from "../render/shadows";
 import type { PostFxSettings } from "../render/postfx/postFx";
-import type { DynamicResolutionSettings } from "../render/dynamicResolution";
+import { DYNAMIC_RESOLUTION_REVISION, type DynamicResolutionSettings } from "../render/dynamicResolution";
 import type { AdaptiveQualitySettings } from "../render/adaptiveQuality";
 
 const STORAGE_KEY = "ashen-lantern.tuning.v1";
@@ -40,6 +40,8 @@ export interface TuningTargets {
 interface Snapshot {
   /** 조명 기본값 개정 번호 — 다르면 저장된 조명값은 버린다 */
   lightingRev: number;
+  /** 동적 해상도 기본값 개정 번호 — 다르면 저장된 값은 버린다 */
+  dynResRev: number;
   lighting: LightingSettings;
   shadows: ShadowSettings;
   postFx: PostFxSettings;
@@ -53,7 +55,7 @@ interface Snapshot {
 }
 
 function snapshot(t: TuningTargets): Snapshot {
-  return structuredClone({ lightingRev: LIGHTING_REVISION, lighting: t.lighting, shadows: t.shadows, postFx: t.postFx, dynamicResolution: t.dynamicResolution, adaptiveQuality: t.adaptiveQuality, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
+  return structuredClone({ lightingRev: LIGHTING_REVISION, dynResRev: DYNAMIC_RESOLUTION_REVISION, lighting: t.lighting, shadows: t.shadows, postFx: t.postFx, dynamicResolution: t.dynamicResolution, adaptiveQuality: t.adaptiveQuality, feel: t.feel, camera: t.camera, shake: t.shake, lockOn: t.lockOn, input: t.input });
 }
 
 /** 저장된 값을 대상 객체에 덮어쓴다 (키가 같은 숫자/불리언만 — 구조가 바뀌어도 안전하게) */
@@ -79,7 +81,7 @@ function load(t: TuningTargets): void {
     if (s.lightingRev === LIGHTING_REVISION) assignKnown(t.lighting, s.lighting);
     assignKnown(t.shadows, s.shadows);
     assignKnown(t.postFx, s.postFx);
-    assignKnown(t.dynamicResolution, s.dynamicResolution);
+    if (s.dynResRev === DYNAMIC_RESOLUTION_REVISION) assignKnown(t.dynamicResolution, s.dynamicResolution);
     assignKnown(t.adaptiveQuality, s.adaptiveQuality);
     assignKnown(t.feel, s.feel);
     assignKnown(t.camera, s.camera);
@@ -180,6 +182,7 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
   pf.add(P, "ssaoStrength", 0, 3, 0.05).name("SSAO 세기");
   pf.add(P, "ssaoRadius", 0.1, 5, 0.05).name("SSAO 반경");
   pf.add(P, "dofFStop", 0.5, 16, 0.1).name("DOF 조리개 (Ultra)");
+  pf.add(P, "sharpen", 0, 1, 0.05).name("선명화 (해상도<100%)");
   pf.close();
 
   const f = t.feel;

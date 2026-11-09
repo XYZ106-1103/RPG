@@ -25,7 +25,7 @@ try {
 }
 
 const webgpu = process.argv.includes("--webgpu");
-const ORDER = ["ssao", "ssr", "volumetric", "taa", "motionBlur", "bloom", "dof", "imageProcessing", "fxaa", "finish"];
+const ORDER = ["ssao", "ssr", "volumetric", "taa", "motionBlur", "bloom", "dof", "imageProcessing", "fxaa", "sharpen", "finish"];
 const failures = [];
 const check = (ok, label, detail = "") => {
   console.log(`${ok ? "✓" : "✗"} ${label}${detail ? `  (${detail})` : ""}`);

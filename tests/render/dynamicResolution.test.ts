@@ -15,8 +15,12 @@ const simulate = (dr: DynamicResolution, baseMs: number, seconds: number, maxSca
 };
 
 describe("동적 해상도", () => {
+  it("하한 기본값은 80% (그 밑은 자동 품질이 효과를 줄인다)", () => {
+    expect(new DynamicResolution().settings.minScale).toBe(0.8);
+  });
+
   it("GPU 35ms → 예산(15ms)에 맞춰 내려간다 (비용 ∝ 배율²)", () => {
-    const dr = new DynamicResolution();
+    const dr = new DynamicResolution({ minScale: 0.6 });
     simulate(dr, 35, 20);
     const gpu = 35 * dr.scale * dr.scale;
     expect(dr.scale).toBeLessThan(0.75);
@@ -57,7 +61,7 @@ describe("동적 해상도", () => {
     const dr = new DynamicResolution();
     simulate(dr, 12, 20, 1, "frame"); // GPU 여유 → 프레임은 16.7ms 고정
     expect(dr.scale).toBe(1);
-    const slow = new DynamicResolution();
+    const slow = new DynamicResolution({ minScale: 0.6 });
     simulate(slow, 40, 30, 1, "frame");
     expect(slow.scale).toBeLessThan(0.8);
   });

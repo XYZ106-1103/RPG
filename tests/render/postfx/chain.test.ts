@@ -7,7 +7,7 @@ const ALL: EffectProbes = { ssao2: true, ssr: true, taa: true, motionBlur: true 
 
 describe("후처리 체인", () => {
   it("순서는 CLAUDE.md: SSAO → SSR → 볼류메트릭 → TAA → 모션 블러 → 블룸 → DOF → ACES+LUT → (FXAA) → 비네팅/그레인", () => {
-    expect(POSTFX_ORDER).toEqual(["ssao", "ssr", "volumetric", "taa", "motionBlur", "bloom", "dof", "imageProcessing", "fxaa", "finish"]);
+    expect(POSTFX_ORDER).toEqual(["ssao", "ssr", "volumetric", "taa", "motionBlur", "bloom", "dof", "imageProcessing", "fxaa", "sharpen", "finish"]);
   });
 
   it("프리셋별 체인 (모두 지원)", () => {
@@ -44,6 +44,12 @@ describe("후처리 체인", () => {
     const plan = planChain(QUALITY_PRESETS.high, resolveSupport({ ...FULL, backend: "WebGL2" }, ALL));
     expect(plan.active).toEqual(["ssao", "volumetric", "bloom", "imageProcessing", "fxaa", "finish"]);
     expect(plan.disabled).toEqual([{ id: "taa", reason: "WebGL2: 경량화 — FXAA로 대체" }]);
+  });
+
+  it("선명화는 요청할 때만, FXAA 뒤·그레인 앞", () => {
+    const sup = resolveSupport(FULL, ALL);
+    expect(planChain(QUALITY_PRESETS.low, sup).active).not.toContain("sharpen");
+    expect(planChain(QUALITY_PRESETS.low, sup, { sharpen: true }).active).toEqual(["bloom", "imageProcessing", "fxaa", "sharpen", "finish"]);
   });
 
   it("Babylon 자체 검사 실패도 반영", () => {

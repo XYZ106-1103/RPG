@@ -4,6 +4,8 @@
  * ACES와 LUT는 Babylon 이미지 처리 한 패스(imageProcessing)에서, 비네팅/그레인은 마지막 패스(finish)에서 한다.
  * TAA를 쓰지 않는 프리셋은 FXAA (후처리를 쓰면 화면 MSAA가 적용되지 않으므로 안티앨리어싱은 항상 하나).
  * FXAA는 밝기 차이로 가장자리를 찾으므로 HDR(등불처럼 1을 넘는 값)에서는 오검출이 많아 톤매핑 뒤(그레인 앞)에 둔다.
+ * 선명화(sharpen, AMD FSR1 RCAS)는 렌더 해상도가 100% 미만일 때만 — 브라우저가 캔버스를 확대하며 생기는 흐림을 미리 보정.
+ *   FXAA 뒤(FXAA의 흐림도 보정), 그레인 앞(그레인을 날카롭게 만들지 않게).
  */
 import type { QualityPreset } from "../quality";
 
@@ -17,6 +19,7 @@ export const POSTFX_ORDER = [
   "dof",
   "imageProcessing",
   "fxaa",
+  "sharpen",
   "finish",
 ] as const;
 export type PostFxId = (typeof POSTFX_ORDER)[number];
@@ -27,6 +30,7 @@ export const POSTFX_LABELS: Readonly<Record<PostFxId, string>> = {
   volumetric: "볼류메트릭",
   taa: "TAA",
   fxaa: "FXAA",
+  sharpen: "선명화",
   motionBlur: "모션 블러",
   bloom: "블룸",
   dof: "DOF",
@@ -96,6 +100,7 @@ export function resolveSupport(
               ? yes
               : no(`${be}: TAA 미지원`),
     fxaa: yes,
+    sharpen: yes,
     motionBlur: !caps.multiRenderTargets
       ? mrt
       : probes.motionBlur
@@ -109,7 +114,12 @@ export function resolveSupport(
 }
 
 /** 프리셋이 켜라고 한 효과 */
-export function wantedEffects(p: Readonly<QualityPreset>): Set<PostFxId> {
+export interface ChainOptions {
+  /** 선명화 패스 (렌더 해상도 < 100%일 때) */
+  sharpen?: boolean;
+}
+
+export function wantedEffects(p: Readonly<QualityPreset>, opts: ChainOptions = {}): Set<PostFxId> {
   const s = new Set<PostFxId>(["imageProcessing", "finish"]);
   if (p.ssao.enabled) s.add("ssao");
   if (p.ssr.enabled) s.add("ssr");
@@ -118,6 +128,7 @@ export function wantedEffects(p: Readonly<QualityPreset>): Set<PostFxId> {
   if (p.motionBlur.enabled) s.add("motionBlur");
   if (p.bloom.enabled) s.add("bloom");
   if (p.dof.enabled) s.add("dof");
+  if (opts.sharpen) s.add("sharpen");
   return s;
 }
 
@@ -132,8 +143,9 @@ export interface ChainPlan {
 export function planChain(
   p: Readonly<QualityPreset>,
   support: Readonly<Record<PostFxId, Support>>,
+  opts: ChainOptions = {},
 ): ChainPlan {
-  const want = wantedEffects(p);
+  const want = wantedEffects(p, opts);
   const disabled: ChainPlan["disabled"] = [];
   for (const id of want) {
     if (!support[id].ok) {

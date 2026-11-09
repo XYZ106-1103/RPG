@@ -30,6 +30,7 @@ import { PostProcessRenderPipeline } from "@babylonjs/core/PostProcesses/RenderP
 import { SSAO2RenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline";
 import { SSRRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline";
 import { TAARenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/taaRenderingPipeline";
+import { ThinFSR1SharpenPostProcess } from "@babylonjs/core/PostProcesses/thinFSR1SharpenPostProcess";
 import type { Scene } from "@babylonjs/core/scene";
 import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
 import "@babylonjs/core/Rendering/prePassRendererSceneComponent";
@@ -62,6 +63,8 @@ export interface PostFxSettings {
   ssaoRadius: number;
   /** DOF 조리개 (작을수록 흐림이 강하다) */
   dofFStop: number;
+  /** 선명화 세기 (0 끔 ~ 1) — 렌더 해상도가 100% 미만일 때만, 해상도가 낮을수록 더 세게 */
+  sharpen: number;
 }
 
 export const DEFAULT_POSTFX: PostFxSettings = {
@@ -75,6 +78,7 @@ export const DEFAULT_POSTFX: PostFxSettings = {
   ssaoStrength: 1,
   ssaoRadius: 1.2,
   dofFStop: 4,
+  sharpen: 0.8,
 };
 
 /** 효과 하나 */
@@ -143,6 +147,9 @@ export class PostFxSystem {
   private time = 0;
   private focusDistance = 4;
   private readonly lanternView = new Vector3();
+  /** 지금 렌더 해상도 배율 (동적 해상도) — 선명화 여부와 세기 */
+  private renderScale = 1;
+  private sharpenWanted = false;
 
   constructor(
     private readonly scene: Scene,
@@ -216,6 +223,22 @@ export class PostFxSystem {
     }
   }
 
+  /** 동적 해상도가 바뀔 때 — 100% 미만이면 선명화 패스를 켠다 (켜고 끌 때만 체인을 다시 짠다) */
+  setRenderScale(scale: number): void {
+    this.renderScale = scale;
+    const want = scale < 0.999 && this.settings.sharpen > 0;
+    if (want === this.sharpenWanted) return;
+    this.sharpenWanted = want;
+    this.rebuild(null);
+  }
+
+  /** RCAS 세기 (stops: 0 가장 선명 ~ 2 약함) — 해상도가 낮을수록 세게 */
+  private sharpenStops(): number {
+    const deficit = Math.min(1, Math.max(0, (1 - this.renderScale) / 0.4));
+    const amount = Math.min(1, Math.max(0, this.settings.sharpen)) * (0.5 + 0.5 * deficit);
+    return 2 * (1 - amount);
+  }
+
   /** 지역 전환으로 LUT가 바뀌었을 때 */
   updateLut(lut: Lut): void {
     this.lutBytes = lutToRgba8(lut, this.lutBytes);
@@ -269,7 +292,7 @@ export class PostFxSystem {
   /** 프리셋/지원 여부로 체인을 다시 짠다 */
   private rebuild(prev: Readonly<QualityPreset> | null): void {
     for (;;) {
-      this.plan = planChain(this.preset, this.effectiveSupport());
+      this.plan = planChain(this.preset, this.effectiveSupport(), { sharpen: this.sharpenWanted });
       for (const d of this.plan.disabled) this.warnOnce(`off:${d.id}`, `[postfx] ${POSTFX_LABELS[d.id]} 비활성화 — ${d.reason}`);
       // 필요 없어진 것 버리기, 설정이 바뀐 것은 다시 만들기
       for (const [id, u] of this.units) {
@@ -425,6 +448,19 @@ export class PostFxSystem {
       }
       case "fxaa":
         return singleUnit(new FxaaPostProcess("ashen_fxaa", 1.0, this.camera, Texture.BILINEAR_SAMPLINGMODE, engine, false, BYTE));
+      case "sharpen": {
+        // AMD FSR1 RCAS (대비 적응 선명화) — Babylon 셰이더(GLSL/WGSL)를 그대로 쓴다
+        const thin = new ThinFSR1SharpenPostProcess("ashen_sharpen", engine);
+        const pp = new PostProcess("ashen_sharpen", ThinFSR1SharpenPostProcess.FragmentUrl, {
+          uniforms: ThinFSR1SharpenPostProcess.Uniforms,
+          engine,
+          camera: this.camera,
+          textureType: BYTE,
+          effectWrapper: thin,
+        });
+        pp.onApplyObservable.add((effect) => thin.updateConstants(effect, this.sharpenStops()));
+        return singleUnit(pp, () => thin.dispose());
+      }
       case "finish":
         return this.createFinish();
     }

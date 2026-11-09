@@ -353,6 +353,7 @@ export class GameSession {
     const gpuMs = this.perf.gpuMs;
     const nextScale = this.dynRes.update(gpuMs ?? dt * 1000, gpuMs !== null ? "gpu" : "frame", dt, this.gfx.quality.current.renderScale);
     if (nextScale !== null) engine.setHardwareScalingLevel(1 / nextScale);
+    this.gfx.postFx.setRenderScale(this.dynRes.scale); // 100% 미만이면 선명화
     // 자동 품질: 해상도가 하한인데도 무거우면 효과를 한 단계 내리고, 상한까지 돌아와 여유가 길면 되돌린다
     const q = this.gfx.quality;
     const d = this.dynRes;
