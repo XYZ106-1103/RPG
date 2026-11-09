@@ -300,7 +300,7 @@ export class ShadowSystem {
   set filterOverride(v: ShadowFilterOverride) {
     if (v === this.filterOverrideValue) return;
     this.filterOverrideValue = v;
-    this.applyFilter();
+    if (this.applyFilter()) this.refreshFrozenMaterials();
   }
 
   /** F4: 프리셋 → PCF 강제 → PCSS 강제 → 프리셋 */
@@ -338,9 +338,14 @@ export class ShadowSystem {
   private applyPreset(p: Readonly<QualityPreset>): void {
     this.preset = p;
     const g = this.sun;
-    if (g.numCascades !== p.shadowCascades) g.numCascades = p.shadowCascades;
+    /** 재질 셰이더 정의(캐스케이드 수, 필터, 등불 그림자 유무)가 바뀌었나 */
+    let definesChanged = false;
+    if (g.numCascades !== p.shadowCascades) {
+      g.numCascades = p.shadowCascades;
+      definesChanged = true;
+    }
     if (g.mapSize !== p.shadowMapSize) g.mapSize = p.shadowMapSize;
-    this.applyFilter();
+    if (this.applyFilter()) definesChanged = true;
     // 캐스케이드 구성이 바뀌면 저장해 둔 행렬은 무효 — 다음 프레임은 전부 새로 계산/렌더
     this.snaps.length = 0;
     this.stats.cascadeRenders = new Array<number>(p.shadowCascades).fill(0);
@@ -355,6 +360,7 @@ export class ShadowSystem {
         this.lanternGen = lg;
         this.applied = null; // 새 생성기에 조정값을 다시 넣는다
         for (const [m, c] of this.casters) if (c.lantern) lg.addShadowCaster(m, false);
+        definesChanged = true;
       }
       const map = this.lanternGen.getShadowMap();
       if (map) map.refreshRate = Math.max(1, Math.round(p.lanternShadowInterval));
@@ -362,17 +368,46 @@ export class ShadowSystem {
       this.lanternGen.dispose();
       this.lanternGen = null;
       this.hookedLanternMap = null;
+      definesChanged = true;
     }
+    if (definesChanged) this.refreshFrozenMaterials();
   }
 
-  /** 필터(프리셋 또는 강제)와 품질 단계를 태양 그림자에 넣는다 — 바뀔 때만 (세터가 재질을 다시 검사하게 만든다) */
-  private applyFilter(): void {
+  /**
+   * freeze()된 재질은 조명이 바뀌어도 셰이더를 다시 만들지 않는다 — 그림자 구성(캐스케이드 수, 필터, 등불 그림자 유무)이
+   * 바뀌면 잠시 풀어 새 셰이더를 만들게 하고 몇 프레임 뒤 다시 얼린다.
+   * (안 하면 WebGL2에서는 옛 셰이더로 잘못 그리고, WebGPU에서는 버려진 그림자 텍스처를 묶어 검증 오류가 난다)
+   */
+  private refreshFrozenMaterials(): void {
+    const frozen = this.scene.materials.filter((m) => m.isFrozen);
+    for (const m of frozen) m.unfreeze();
+    this.sun.getLight()._markMeshesAsLightDirty();
+    this.lanternLight._markMeshesAsLightDirty();
+    if (frozen.length === 0) return;
+    let frames = 0;
+    const obs = this.scene.onAfterRenderObservable.add(() => {
+      if (++frames < 3) return;
+      this.scene.onAfterRenderObservable.remove(obs);
+      for (const m of frozen) if (!m.isFrozen) m.freeze();
+    });
+  }
+
+  /** 필터(프리셋 또는 강제)와 품질 단계를 태양 그림자에 넣는다 — 바뀔 때만 (세터가 재질을 다시 검사하게 만든다). 바꿨으면 true */
+  private applyFilter(): boolean {
     const g = this.sun;
     const p = this.preset;
     const filter = this.activeFilter === "pcss" ? ShadowGenerator.FILTER_PCSS : ShadowGenerator.FILTER_PCF;
     const q = p.shadowFilterQuality === "high" ? ShadowGenerator.QUALITY_HIGH : p.shadowFilterQuality === "medium" ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW;
-    if (g.filter !== filter) g.filter = filter;
-    if (g.filteringQuality !== q) g.filteringQuality = q;
+    let changed = false;
+    if (g.filter !== filter) {
+      g.filter = filter;
+      changed = true;
+    }
+    if (g.filteringQuality !== q) {
+      g.filteringQuality = q;
+      changed = true;
+    }
+    return changed;
   }
 
   private isFrozen(layer: number): boolean {
