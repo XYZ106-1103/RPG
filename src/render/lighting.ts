@@ -12,16 +12,17 @@
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
-import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { BackgroundMaterial } from "@babylonjs/core/Materials/Background/backgroundMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { CubeTexture } from "@babylonjs/core/Materials/Textures/cubeTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
-import "@babylonjs/core/Helpers/sceneHelpers";
 import { lanternFlicker } from "./lanternFlicker";
 
 export interface LightingSettings {
@@ -67,6 +68,9 @@ export const DEFAULT_LIGHTING: LightingSettings = {
   exposure: 1.25,
   contrast: 1.15,
 };
+
+/** BackgroundMaterial 하늘을 예전 PBR 하늘과 같은 밝기로 (헤드리스 스크린샷 비교로 맞춤) */
+const SKY_MATCH_PBR = 0.5;
 
 /** 등불을 붙일 본이 없을 때 허리 근처 위치 (부모 기준, m) */
 const LANTERN_FALLBACK_OFFSET = new Vector3(0.45, 1.05, -0.35);
@@ -122,14 +126,26 @@ export class Lighting {
       });
       this.env = env;
       this.scene.environmentTexture = env;
-      this.sky = this.scene.createDefaultSkybox(env, true, 800, this.settings.skyBlur, false);
-      if (this.sky) {
-        this.sky.name = "sky";
+      // 하늘: 조명 계산 없는 BackgroundMaterial (환경맵만 조회, 흐림은 밉맵 단계로).
+      // Babylon 기본 하늘(createDefaultSkybox)은 PBR이라 화면 절반을 덮는 하늘 픽셀마다 무거운 셰이더를 돌린다 — 내장 그래픽에 큰 부담
+      const sky = CreateBox("sky", { size: 800, sideOrientation: Mesh.BACKSIDE }, this.scene);
+      const skyMat = new BackgroundMaterial("skyMat", this.scene);
+      const skyTex = env.clone();
+      skyTex.coordinatesMode = Texture.SKYBOX_MODE;
+      skyMat.reflectionTexture = skyTex;
+      skyMat.reflectionBlur = this.settings.skyBlur;
+      skyMat.useRGBColor = true; // 환경맵 색 그대로 (false면 휘도만 primaryColor로 물들인다)
+      skyMat.primaryColor = Color3.White();
+      skyMat.enableNoise = true; // 어두운 그라데이션 띠(밴딩) 완화
+      sky.material = skyMat;
+      sky.ignoreCameraMaxZ = true;
+      this.sky = sky;
+      {
         this.sky.isPickable = false;
         this.sky.infiniteDistance = true;
         // 하늘 PBR 재질의 기본 반사율은 흰색(완전 거울) — SSR이 하늘을 거울로 보고 화면 전체에 뿌연 반사를 더한다.
         // 하늘은 조명을 받지 않으므로 반사율을 0으로 해도 모습은 같다
-        if (this.sky.material instanceof PBRMaterial) this.sky.material.reflectivityColor = Color3.Black();
+        // (BackgroundMaterial은 반사율을 쓰지 않아 SSR이 하늘을 거울로 보는 문제도 없다)
         // 하늘에는 안개를 입히지 않는다 (무한히 먼 배경 — 안개 색 한 가지로 덮이지 않게)
         this.sky.applyFog = false;
       }
@@ -156,7 +172,8 @@ export class Lighting {
     this.time += dt;
     this.scene.environmentIntensity = s.iblIntensity;
     const skyMat = this.sky?.material;
-    if (skyMat instanceof PBRMaterial && skyMat.reflectionTexture) skyMat.reflectionTexture.level = s.skyLevel;
+    // 예전 PBR 하늘은 반사에 환경광 세기(environmentIntensity)와 PBR 반사 감쇠가 곱해졌다 — 같은 밝기가 되게 맞춘 값 (실측 비교)
+    if (skyMat instanceof BackgroundMaterial && skyMat.reflectionTexture) skyMat.reflectionTexture.level = s.skyLevel * s.iblIntensity * SKY_MATCH_PBR;
 
     const el = (s.sunElevationDeg * Math.PI) / 180;
     const az = (s.sunAzimuthDeg * Math.PI) / 180;
