@@ -43,6 +43,7 @@ import { FpsMeter } from "../ui/fpsMeter";
 import { PerfProbe } from "../render/perfProbe";
 import { PassTimer } from "../render/passTimer";
 import { DynamicResolution } from "../render/dynamicResolution";
+import { AdaptiveQuality, adaptPatch } from "../render/adaptiveQuality";
 import type { InputDebugOverlay } from "../ui/inputDebug";
 import { LockOnMarker } from "../ui/lockOnMarker";
 import { PointerLockHint } from "../ui/pointerLockHint";
@@ -135,6 +136,8 @@ export class GameSession {
   private readonly perf: PerfProbe;
   private readonly passTimer: PassTimer;
   readonly dynRes = new DynamicResolution();
+  /** 해상도를 하한까지 내려도 무거우면 효과를 한 단계씩 줄인다 (사용자 프리셋 위에서 임시로) */
+  readonly adaptive = new AdaptiveQuality();
   private readonly softwareNotice: HTMLDivElement | null = null;
   private readonly frame = createInputFrame();
   private readonly look = { x: 0, y: 0 };
@@ -166,6 +169,10 @@ export class GameSession {
     // 동적 해상도: 프리셋 렌더 스케일에서 시작
     this.dynRes.scale = gfx.quality.current.renderScale;
     scene.getEngine().setHardwareScalingLevel(1 / this.dynRes.scale);
+    // 사용자가 프리셋을 바꾸면 자동 품질 단계는 처음부터 (setLevel이 프리셋 값을 통째로 되돌린다)
+    gfx.quality.subscribe(null, (p, prev) => {
+      if (prev && p.level !== prev.level) this.adaptive.reset();
+    });
     if (options.renderInfo?.software) {
       // 소프트웨어 렌더링: 브라우저 GPU 가속이 꺼져 있다 (Chrome은 GPU 프로세스가 충돌하면 그 실행 동안 끈다)
       const el = document.createElement("div");
@@ -346,6 +353,19 @@ export class GameSession {
     const gpuMs = this.perf.gpuMs;
     const nextScale = this.dynRes.update(gpuMs ?? dt * 1000, gpuMs !== null ? "gpu" : "frame", dt, this.gfx.quality.current.renderScale);
     if (nextScale !== null) engine.setHardwareScalingLevel(1 / nextScale);
+    // 자동 품질: 해상도가 하한인데도 무거우면 효과를 한 단계 내리고, 상한까지 돌아와 여유가 길면 되돌린다
+    const q = this.gfx.quality;
+    const d = this.dynRes;
+    const step = this.adaptive.update(gpuMs ?? dt * 1000, gpuMs !== null ? "gpu" : "frame", dt, {
+      level: q.level,
+      atFloor: !d.settings.enabled || d.scale <= Math.min(q.current.renderScale, d.settings.minScale) + 1e-3,
+      atMax: d.scale >= q.current.renderScale - 1e-3,
+      targetFps: d.settings.targetFps,
+    });
+    if (step !== null) {
+      q.override(adaptPatch(q.level, step));
+      console.info(`[render] ${this.adaptive.describe(q.level)}`);
+    }
 
     this.updatePanel();
     this.lockHint.update({ pointerLocked: this.input.isPointerLocked, failed: this.input.pointerLockFailed, usingGamepad: this.input.activeDevice === "gamepad" });
@@ -474,7 +494,7 @@ export class GameSession {
     const res = `해상도 ${Math.round(d.scale * 100)}%${d.settings.enabled ? ` 자동(목표 ${d.settings.targetFps}fps, 하한 ${Math.round(d.settings.minScale * 100)}%)` : ""}`;
     const size = `화면 ${canvas?.clientWidth ?? 0}×${canvas?.clientHeight ?? 0} → 렌더 ${engine.getRenderWidth()}×${engine.getRenderHeight()} (DPR ${dpr})`;
     const why = ri?.fallbackReason ? `  WebGPU 안 씀: ${ri.fallbackReason}` : "";
-    return `${ri?.backend ?? "?"} · ${ri?.gpuName ?? "?"}${ri?.software ? " (소프트웨어!)" : ""} · ${size} · ${res}${why}`;
+    return `${ri?.backend ?? "?"} · ${ri?.gpuName ?? "?"}${ri?.software ? " (소프트웨어!)" : ""} · ${size} · ${res} · ${this.adaptive.describe(this.gfx.quality.level)}${why}`;
   }
 
   private animLine(): string {
