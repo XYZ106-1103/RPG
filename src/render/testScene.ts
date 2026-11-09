@@ -9,6 +9,7 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Scene } from "@babylonjs/core/scene";
+import { prepareSceneForPostFx } from "./postfx/postFx";
 
 /** 환경맵이 로드되기 전/실패 시 배경 (거의 검정에 가까운 남색) */
 const SKY_COLOR = new Color4(0.012, 0.014, 0.022, 1);
@@ -20,6 +21,8 @@ export interface TestScene {
 
 export function createTestScene(engine: AbstractEngine): TestScene {
   const scene = new Scene(engine);
+  // 이미지 처리(ACES·LUT)는 후처리 패스에서 — 재질이 만들어지기 전에 켜야 freeze()된 재질도 톤매핑을 두 번 하지 않는다
+  prepareSceneForPostFx(scene);
   scene.clearColor = SKY_COLOR;
 
   // 바닥 평면 (TODO(에셋): 재의 평원 지형/텍스처로 교체)

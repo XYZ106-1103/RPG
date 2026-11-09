@@ -36,6 +36,9 @@ export class SparkRenderer {
     this.mesh.alwaysSelectAsActiveMesh = true; // 인스턴스가 원래 박스 범위 밖에 있어도 컬링되지 않게
     this.matrices = new Float32Array(capacity * 16); // 0행렬 = 보이지 않음
     this.mesh.thinInstanceSetBuffer("matrix", this.matrices, 16, false);
+    // 속도 버퍼(TAA 재투영/모션 블러)는 직전 프레임 행렬을 정점 속성으로 읽는다 — 없으면 WebGPU가 파이프라인을 거부한다.
+    // 불똥은 짧고 작아 속도가 의미 없으므로 같은 버퍼를 직전 행렬로도 쓴다 (속도 0)
+    this.mesh.thinInstanceSetBuffer("previousMatrix", this.matrices, 16, false);
   }
 
   burst(px: number, py: number, pz: number, dx: number, dy: number, dz: number, params: SparkParams): void {
@@ -67,6 +70,7 @@ export class SparkRenderer {
       this.m.copyToArray(this.matrices, out);
     }
     this.mesh.thinInstanceBufferUpdated("matrix");
+    this.mesh.thinInstanceBufferUpdated("previousMatrix");
     this.wasAlive = sim.alive > 0;
   }
 

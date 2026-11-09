@@ -27,6 +27,9 @@ import { Lighting } from "../render/lighting";
 import { QUALITY_STORAGE_KEY, QualityManager, initialQualityLevel } from "../render/quality";
 import { ShadowSystem } from "../render/shadows";
 import { createTestScene } from "../render/testScene";
+import { PostFxSystem } from "../render/postfx/postFx";
+import { ASHEN_PLAINS } from "../render/postfx/regions";
+import { generateLut } from "../render/postfx/lut";
 import type { AttackInstance } from "../sim/combat/types";
 import { PLAYER_TIMELINES } from "../sim/data/playerTimelines";
 import { isDead, isStaggered, type Entity, type EntityId } from "../sim/entity";
@@ -63,6 +66,7 @@ export interface RenderSystems {
   quality: QualityManager;
   lighting: Lighting;
   shadows: ShadowSystem;
+  postFx: PostFxSystem;
 }
 
 export interface SessionOptions {
@@ -226,10 +230,12 @@ export class GameSession {
     // 정적 환경: 그림자를 드리우고 받는다 (바닥은 받기만). TODO(월드): 청크 로드/해제 때 addCaster/해제 함수로
     shadows.addCaster(environment);
     shadows.addReceiver([ground, ...environment]);
+    // 후처리 (SSAO → … → 비네팅/그레인). TODO(지역): 지역 볼륨 연결
+    const postFx = new PostFxSystem(scene, camera.camera, lighting.lantern, quality, generateLut(ASHEN_PLAINS.lutParams));
     // 락온 위치 조회는 렌더 보간 위치 (화면에 보이는 위치)
     let session: GameSession | null = null;
     const lockOn = new LockOnSystem(scene, camera.camera, physics, sim, hero.id, (id) => session?.views.get(id)?.display.position ?? sim.get(id)?.position ?? null);
-    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, { quality, lighting, shadows }, input, canvas, options, hero, heroModel);
+    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, { quality, lighting, shadows, postFx }, input, canvas, options, hero, heroModel);
     return session;
   }
 
@@ -287,6 +293,9 @@ export class GameSession {
     // freeze()된 재질에는 setEnabled 변화가 반영되지 않으므로 intensity로 끈다 (testScene.ts 참고)
     this.gfx.lighting.update(dt, this.lanternOn);
     this.gfx.shadows.update();
+    const cp = this.camera.camera.globalPosition;
+    const hp = heroView.display.position;
+    this.gfx.postFx.update(dt, ASHEN_PLAINS, Math.hypot(cp.x - hp.x, cp.y - hp.y - 1, cp.z - hp.z)); // DOF 초점 = 카메라 ~ 플레이어 가슴
 
     this.updatePanel();
     this.lockHint.update({ pointerLocked: this.input.isPointerLocked, failed: this.input.pointerLockFailed, usingGamepad: this.input.activeDevice === "gamepad" });
@@ -394,6 +403,7 @@ export class GameSession {
       `F3 물리 디버그 ${this.physicsDebug.enabled ? "켜짐" : "꺼짐"}  등불 ${this.lanternOn ? "켜짐" : "꺼짐"}  F4 그림자 필터 비교`,
       this.animLine(),
       `그림자   ${this.gfx.shadows.describe()}`,
+      `후처리   ${this.gfx.postFx.describe()}`,
       `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}  카메라 ${((this.camera.viewYaw * 180) / Math.PI).toFixed(0)}°`,
       "",
       ...this.eventLog,

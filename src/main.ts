@@ -61,6 +61,8 @@ async function main(): Promise<void> {
     });
   }
 
+  // 개발 서버에서만: 헤드리스 검사 스크립트가 씬 상태(후처리 순서 등)를 읽을 수 있게
+  if (import.meta.env.DEV) (window as unknown as { __ashenSession?: GameSession }).__ashenSession = session;
   console.info(`[loop] 시뮬레이션 ${SIM_HZ}Hz 고정 스텝`);
   // 입력 폴링(게임패드, 탭/홀드 타이머)은 고정 스텝보다 먼저 해야 같은 프레임의 sim 틱에 반영된다
   let lastFrameMs = performance.now();

@@ -108,6 +108,9 @@ export class Lighting {
         this.sky.name = "sky";
         this.sky.isPickable = false;
         this.sky.infiniteDistance = true;
+        // 하늘 PBR 재질의 기본 반사율은 흰색(완전 거울) — SSR이 하늘을 거울로 보고 화면 전체에 뿌연 반사를 더한다.
+        // 하늘은 조명을 받지 않으므로 반사율을 0으로 해도 모습은 같다
+        if (this.sky.material instanceof PBRMaterial) this.sky.material.reflectivityColor = Color3.Black();
       }
       this.update(0, true);
     } catch (err) {
