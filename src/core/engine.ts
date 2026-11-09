@@ -33,7 +33,9 @@ async function tryCreateWebGPU(canvas: HTMLCanvasElement): Promise<{ engine: Web
   try {
     if (!(await WebGPUEngine.IsSupportedAsync)) return { engine: null, reason: "WebGPU 어댑터 없음 (GPU/드라이버가 막힘)" };
     const engine = new WebGPUEngine(canvas, {
-      antialias: true,
+      // 화면(캔버스) MSAA는 끈다: 후처리가 항상 켜져 있어 씬은 MSAA 없는 렌더 타깃에 그려지고, 캔버스에는 전체 화면 사각형
+      // 하나만 그린다 — 4배 MSAA 색 버퍼와 해석(resolve)은 순수 낭비. 안티앨리어싱은 후처리(FXAA/TAA)가 맡는다
+      antialias: false,
       adaptToDeviceRatio: true,
       powerPreference: "high-performance",
       // 어댑터가 지원하는 선택 기능을 모두 켠다 — 압축 텍스처(BC/ASTC: KTX2를 압축 상태로 올림), GPU 시간 측정(timestamp-query).
@@ -54,7 +56,7 @@ async function tryCreateWebGPU(canvas: HTMLCanvasElement): Promise<{ engine: Web
 function createWebGL2(canvas: HTMLCanvasElement): Engine {
   const engine = new Engine(
     canvas,
-    true,
+    false, // 캔버스 MSAA 끔 (WebGPU와 같은 이유)
     {
       powerPreference: "high-performance",
       stencil: true,

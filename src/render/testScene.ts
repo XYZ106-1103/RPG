@@ -24,6 +24,8 @@ export function createTestScene(engine: AbstractEngine): TestScene {
   const scene = new Scene(engine);
   // 이미지 처리(ACES·LUT)는 후처리 패스에서 — 재질이 만들어지기 전에 켜야 freeze()된 재질도 톤매핑을 두 번 하지 않는다
   prepareSceneForPostFx(scene);
+  // 마우스가 움직일 때마다 모든 메시에 광선을 쏘는 Babylon 기본 동작을 끈다 (호버 피킹을 쓰지 않는다 — 락온/조준은 물리 레이캐스트)
+  scene.skipPointerMovePicking = true;
   scene.clearColor = SKY_COLOR;
 
   // 바닥 평면 (TODO(에셋): 재의 평원 지형/텍스처로 교체)
