@@ -28,7 +28,7 @@ import type { RenderTargetTexture } from "@babylonjs/core/Materials/Textures/ren
 import { Matrix, type Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import type { Observer } from "@babylonjs/core/Misc/observable";
+import { EventState, type Observer } from "@babylonjs/core/Misc/observable";
 import type { Node } from "@babylonjs/core/node";
 import type { Scene } from "@babylonjs/core/scene";
 import { cascadeUpdates } from "./cascadeSchedule";
@@ -58,8 +58,9 @@ export interface ShadowSettings {
 }
 
 export const DEFAULT_SHADOWS: ShadowSettings = {
-  sunBias: 0.0015,
-  sunNormalBias: 0.02,
+  // 원거리 캐스케이드(해상도가 낮다)의 경사면·벽에 체크 무늬 아크네가 생겨 올림 (0.0015/0.02 → 0.003/0.1, 발밑 피터패닝 없음 확인)
+  sunBias: 0.003,
+  sunNormalBias: 0.1,
   pcssLightSize: 0.02,
   cascadeBlend: 0.12,
   lambda: 0.85,
@@ -70,6 +71,9 @@ export const DEFAULT_SHADOWS: ShadowSettings = {
   lanternNormalBias: 0.02,
   lanternDarkness: 0.15,
 };
+
+/** 기본값을 바꾸면 올린다 — ?tune에 저장된 예전 그림자 값을 버리고 새 기본값으로 시작 */
+export const SHADOW_REVISION = 2;
 
 export interface CasterOptions {
   /** 태양 그림자를 드리운다 (기본 true) */
@@ -490,9 +494,17 @@ export class ShadowSystem {
       if (this.isFrozen(layer)) st.cascadeSkips[layer] = (st.cascadeSkips[layer] ?? 0) + 1;
       else st.cascadeRenders[layer] = (st.cascadeRenders[layer] ?? 0) + 1;
     });
-    // 지우기: 갱신하지 않는 층은 지우지 않아 직전 깊이를 유지 (옵저버가 있으면 기본 지우기 대신 이것만 불린다)
+    // 지우기: 갱신하지 않는 층은 지우지 않아 직전 깊이를 유지한다.
+    // ShadowGenerator가 이미 자기 지우기 옵저버(필터에 맞는 값으로 깊이를 1로)를 걸어 두었으므로, 그것을 떼어 내
+    // "갱신하는 층에서만" 대신 불러 준다. (예전에는 우리 옵저버를 하나 더 붙이기만 해서 Babylon 옵저버가 갱신하지 않는
+    // 층까지 지웠다 → 원거리 캐스케이드 그림자가 프레임마다 사라졌다 나타나는 깜박임)
+    const babylonClears = [...map.onClearObservable.observers];
+    for (const o of babylonClears) map.onClearObservable.remove(o);
+    const state = new EventState(0);
     map.onClearObservable.add((engine) => {
-      if (!this.isFrozen(this.currentLayer)) engine.clear(map.clearColor ?? this.scene.clearColor, true, true, true);
+      if (this.isFrozen(this.currentLayer)) return;
+      for (const o of babylonClears) o.callback(engine, state);
+      if (babylonClears.length === 0) engine.clear(map.clearColor ?? this.scene.clearColor, true, true, true);
     });
     // 그리기: 갱신하지 않는 층은 빈 목록
     const prev = map.getCustomRenderList;

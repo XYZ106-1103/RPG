@@ -26,12 +26,14 @@ export interface QualityPreset {
   /** pcf: 가벼운 부드러운 그림자 / pcss: 접촉점은 선명하고 멀어질수록 퍼지는 그림자 (비싸다 — Ultra만) */
   shadowFilter: "pcf" | "pcss";
   shadowFilterQuality: "low" | "medium" | "high";
-  /** 원거리 캐스케이드(3, 4번) 갱신 간격 (프레임). 1 = 매 프레임 */
+  /** 원거리 캐스케이드(3, 4번) 갱신 간격 (프레임). 1 = 매 프레임.
+   * 모든 프리셋 1: 건너뛴 캐스케이드가 Babylon 텍스처 배열 층에서 직전 깊이를 안정적으로 유지하지 못해 원거리 그림자가
+   * 사라졌다 나타나는 깜박임이 있었다 (태양 그림자 전체 비용은 내장 그래픽에서도 0.6ms라 절약 효과가 작다). ?tune에서 시험용으로만 */
   farCascadeInterval: number;
   /** 등불(포인트 라이트) 그림자 — 큐브맵이라 비싸다 */
   lanternShadow: boolean;
   lanternShadowMapSize: number;
-  /** 등불 그림자 갱신 간격 (프레임). 1 = 매 프레임 — 큐브맵 6면이라 2면 비용이 절반 */
+  /** 등불 그림자 갱신 간격 (프레임). 1 = 매 프레임 — 모든 프리셋 1 (등불은 캐릭터와 함께 움직여 격프레임이면 그림자가 어긋난다) */
   lanternShadowInterval: number;
   ssao: EffectQuality;
   /** SSAO 계산 해상도 배율 (0.5 = 절반) */
@@ -65,10 +67,10 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     shadowCascades: 2,
     shadowFilter: "pcf",
     shadowFilterQuality: "low",
-    farCascadeInterval: 4,
+    farCascadeInterval: 1,
     lanternShadow: false,
     lanternShadowMapSize: 256,
-    lanternShadowInterval: 2,
+    lanternShadowInterval: 1,
     ssao: fx(false, 0),
     ssaoRatio: 0.5,
     ssr: fx(false, 0),
@@ -86,10 +88,10 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     shadowCascades: 3,
     shadowFilter: "pcf",
     shadowFilterQuality: "medium",
-    farCascadeInterval: 3,
+    farCascadeInterval: 1,
     lanternShadow: false,
     lanternShadowMapSize: 256,
-    lanternShadowInterval: 2,
+    lanternShadowInterval: 1,
     ssao: fx(true, 8),
     ssaoRatio: 0.5,
     ssr: fx(false, 0),
@@ -107,10 +109,10 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     shadowCascades: 4,
     shadowFilter: "pcf",
     shadowFilterQuality: "high",
-    farCascadeInterval: 2,
+    farCascadeInterval: 1,
     lanternShadow: true,
     lanternShadowMapSize: 512,
-    lanternShadowInterval: 2,
+    lanternShadowInterval: 1,
     ssao: fx(true, 8),
     ssaoRatio: 0.5,
     ssr: fx(false, 0),

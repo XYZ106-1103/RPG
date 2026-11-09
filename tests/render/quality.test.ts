@@ -74,12 +74,12 @@ describe("QualityManager", () => {
     const q = new QualityManager("medium");
     const calls: number[] = [];
     const off = q.subscribe(["farCascadeInterval"], (p) => calls.push(p.farCascadeInterval));
-    q.override({ farCascadeInterval: 1 });
+    q.override({ farCascadeInterval: 3 });
     expect(q.level).toBe("medium");
-    expect(calls).toEqual([3, 1]);
+    expect(calls).toEqual([1, 3]);
     off();
     q.override({ farCascadeInterval: 5 });
-    expect(calls).toEqual([3, 1]);
+    expect(calls).toEqual([1, 3]);
   });
 
   it("중첩 값(ssao)도 내용으로 비교", () => {
