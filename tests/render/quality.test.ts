@@ -86,9 +86,9 @@ describe("QualityManager", () => {
     const q = new QualityManager("high");
     let n = 0;
     q.subscribe(["ssao"], () => n++);
-    q.override({ ssao: { enabled: true, samples: 16 } }); // 같은 내용
+    q.override({ ssao: { ...QUALITY_PRESETS.high.ssao } }); // 같은 내용 (다른 객체)
     expect(n).toBe(1);
-    q.override({ ssao: { enabled: true, samples: 8 } });
+    q.override({ ssao: { enabled: true, samples: QUALITY_PRESETS.high.ssao.samples + 4 } });
     expect(n).toBe(2);
   });
 });

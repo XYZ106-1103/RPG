@@ -42,7 +42,7 @@ export interface QualityPreset {
   volumetric: EffectQuality;
   /** 후처리를 쓰면 화면 MSAA가 적용되지 않으므로 항상 둘 중 하나 */
   antiAliasing: "fxaa" | "taa";
-  /** 카메라 움직임 기준 모션 블러 (strength 0~1) */
+  /** 카메라 움직임 기준 모션 블러 (strength 0~1). 소울라이크는 끄고 하는 경우가 많아 Ultra 전용 */
   motionBlur: EffectQuality & { strength: number };
   /** kernel: 블룸 블러 크기, scale: 블룸 계산 해상도 배율 */
   bloom: { enabled: boolean; kernel: number; scale: number };
@@ -111,12 +111,12 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, Readonly<QualityPres
     lanternShadow: true,
     lanternShadowMapSize: 512,
     lanternShadowInterval: 2,
-    ssao: fx(true, 16),
+    ssao: fx(true, 8),
     ssaoRatio: 0.5,
     ssr: fx(false, 0),
     volumetric: fx(true, 32),
     antiAliasing: "taa",
-    motionBlur: { enabled: true, samples: 16, strength: 0.35 },
+    motionBlur: { enabled: false, samples: 0, strength: 0 },
     bloom: { enabled: true, kernel: 64, scale: 0.5 },
     dof: { enabled: false, blurLevel: 0 },
     vegetationDensity: 0.85,

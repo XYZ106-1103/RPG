@@ -16,7 +16,7 @@ describe("후처리 체인", () => {
     expect(chains).toEqual({
       low: "bloom>imageProcessing>fxaa>finish",
       medium: "ssao>bloom>imageProcessing>fxaa>finish",
-      high: "ssao>volumetric>taa>motionBlur>bloom>imageProcessing>finish",
+      high: "ssao>volumetric>taa>bloom>imageProcessing>finish",
       ultra: "ssao>ssr>volumetric>taa>motionBlur>bloom>dof>imageProcessing>finish",
     });
   });
@@ -35,8 +35,8 @@ describe("후처리 체인", () => {
   });
 
   it("속도 버퍼가 안 되는 백엔드(Babylon 9.33 WebGPU)는 TAA → FXAA, 모션 블러(카메라 기준)는 유지", () => {
-    const plan = planChain(QUALITY_PRESETS.high, resolveSupport({ ...FULL, velocityPrePass: false }, ALL));
-    expect(plan.active).toEqual(["ssao", "volumetric", "motionBlur", "bloom", "imageProcessing", "fxaa", "finish"]);
+    const plan = planChain(QUALITY_PRESETS.ultra, resolveSupport({ ...FULL, velocityPrePass: false }, ALL));
+    expect(plan.active).toEqual(["ssao", "ssr", "volumetric", "motionBlur", "bloom", "dof", "imageProcessing", "fxaa", "finish"]);
     expect(plan.disabled).toEqual([{ id: "taa", reason: "WebGPU: 속도 버퍼 오류(Babylon)" }]);
   });
 
