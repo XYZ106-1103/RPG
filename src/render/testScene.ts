@@ -10,6 +10,7 @@ import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Scene } from "@babylonjs/core/scene";
 import { prepareSceneForPostFx } from "./postfx/postFx";
+import type { RegionProfile, RegionVolume } from "./postfx/regions";
 
 /** 환경맵이 로드되기 전/실패 시 배경 (거의 검정에 가까운 남색) */
 const SKY_COLOR = new Color4(0.012, 0.014, 0.022, 1);
@@ -35,3 +36,31 @@ export function createTestScene(engine: AbstractEngine): TestScene {
   ground.freezeWorldMatrix();
   return { scene, ground };
 }
+
+/** 지역 전환 확인용 두 번째 지역 (시작 위치 뒤쪽, z < -9). TODO(월드): 실제 지역 배치로 교체 */
+export const TEST_COLD_REGION: RegionProfile = {
+  id: "cold_test",
+  name: "차가운 시험 지역",
+  lutFile: "assets/luts/cold_test.cube",
+  lutParams: {
+    saturation: 0.7,
+    contrast: 1.04,
+    brightness: -0.015,
+    shadowTint: [0.86, 0.95, 1.16],
+    highlightTint: [0.95, 1.0, 1.06],
+  },
+  fogColor: [0.06, 0.085, 0.13],
+  fogDensity: 0.045,
+  exposureEV: -0.3,
+  bloomThreshold: 1.6,
+  bloomWeight: 0.6,
+};
+
+export const TEST_COLD_VOLUME: RegionVolume = {
+  id: "cold_test_box",
+  profileId: "cold_test",
+  min: [-20, -2, -20],
+  max: [20, 15, -9],
+  priority: 1,
+  blendSeconds: 2.5,
+};

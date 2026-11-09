@@ -5,7 +5,8 @@
  *  - 태양: 꺼진 태양의 잔광 — 약하고 차가운 방향광 (그림자는 shadows.ts의 CSM)
  *    그림자가 보이려면 그림자가 생기지 않는 환경광(IBL)보다 직접광 비중이 커야 해서 태양 : IBL을 대략 3 : 1 이상으로 둔다
  *  - 등불: 플레이어 허리 본에 붙은 따뜻한 포인트 라이트, 미세한 깜빡임
- *  - 노출: ACES 톤매핑, 등불 기준(등불에서 2~3m 거리가 적정 밝기)으로 맞춤
+ *  - 노출: ACES 톤매핑, 등불 기준(등불에서 2~3m 거리가 적정 밝기)으로 맞춤. 지역 볼륨이 exposureScale(EV)로 보정
+ *  - 등불 불꽃: 빛나는 작은 구(HDR 발광) — 블룸이 등불 색을 번지게 하는 원천. TODO(에셋): 등불 모델로 교체
  * 수치는 LightingSettings 한 곳에 있고 ?tune GUI가 직접 바꾼다 (매 프레임 update에서 반영).
  */
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -16,6 +17,8 @@ import { CubeTexture } from "@babylonjs/core/Materials/Textures/cubeTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
 import "@babylonjs/core/Helpers/sceneHelpers";
@@ -39,6 +42,8 @@ export interface LightingSettings {
   lanternColor: { r: number; g: number; b: number };
   /** 깜빡임 세기 (0 ~ 0.2, 강도 배율 ±) */
   lanternFlicker: number;
+  /** 등불 불꽃 발광 세기 (선형 HDR — 블룸 임계값보다 커야 번진다) */
+  lanternGlow: number;
   exposure: number;
   contrast: number;
 }
@@ -58,6 +63,7 @@ export const DEFAULT_LIGHTING: LightingSettings = {
   lanternRange: 14,
   lanternColor: { r: 1.0, g: 0.62, b: 0.3 },
   lanternFlicker: 0.05,
+  lanternGlow: 8,
   exposure: 1.25,
   contrast: 1.15,
 };
@@ -71,6 +77,11 @@ export class Lighting {
   readonly lantern: PointLight;
   env: CubeTexture | null = null;
   sky: Mesh | null = null;
+  /** 등불 불꽃 (발광 구) */
+  readonly lanternFlame: Mesh;
+  /** 지역 볼륨의 노출 보정 배율 (2^EV) */
+  exposureScale = 1;
+  private readonly flameMat: StandardMaterial;
   private time = 0;
   private readonly sunDir = new Vector3();
 
@@ -86,6 +97,14 @@ export class Lighting {
     this.sun.specular = new Color3(0.2, 0.22, 0.28);
 
     this.lantern = new PointLight("lantern", LANTERN_FALLBACK_OFFSET.clone(), scene);
+    // 등불 불꽃: 그림자/피킹 없음, 안개 영향 없음 (가까이 있는 광원)
+    this.lanternFlame = CreateSphere("lanternFlame", { diameter: 0.07, segments: 8 }, scene);
+    this.flameMat = new StandardMaterial("lanternFlameMat", scene);
+    this.flameMat.disableLighting = true;
+    this.lanternFlame.material = this.flameMat;
+    this.lanternFlame.isPickable = false;
+    this.lanternFlame.applyFog = false;
+    this.lanternFlame.parent = this.lantern;
 
     const ip = scene.imageProcessingConfiguration;
     ip.toneMappingEnabled = true;
@@ -111,6 +130,8 @@ export class Lighting {
         // 하늘 PBR 재질의 기본 반사율은 흰색(완전 거울) — SSR이 하늘을 거울로 보고 화면 전체에 뿌연 반사를 더한다.
         // 하늘은 조명을 받지 않으므로 반사율을 0으로 해도 모습은 같다
         if (this.sky.material instanceof PBRMaterial) this.sky.material.reflectivityColor = Color3.Black();
+        // 하늘에는 안개를 입히지 않는다 (무한히 먼 배경 — 안개 색 한 가지로 덮이지 않게)
+        this.sky.applyFog = false;
       }
       this.update(0, true);
     } catch (err) {
@@ -148,10 +169,14 @@ export class Lighting {
     this.lantern.diffuse.set(s.lanternColor.r, s.lanternColor.g, s.lanternColor.b);
     this.lantern.specular.set(s.lanternColor.r, s.lanternColor.g * 1.05, s.lanternColor.b * 1.2);
     this.lantern.range = s.lanternRange;
-    this.lantern.intensity = lanternOn ? s.lanternIntensity * lanternFlicker(this.time, s.lanternFlicker) : 0;
+    const flicker = lanternFlicker(this.time, s.lanternFlicker);
+    this.lantern.intensity = lanternOn ? s.lanternIntensity * flicker : 0;
+    this.lanternFlame.isVisible = lanternOn;
+    const glow = s.lanternGlow * flicker;
+    this.flameMat.emissiveColor.set(s.lanternColor.r * glow, s.lanternColor.g * glow, s.lanternColor.b * glow);
 
     const ip = this.scene.imageProcessingConfiguration;
-    ip.exposure = s.exposure;
+    ip.exposure = s.exposure * this.exposureScale;
     ip.contrast = s.contrast;
   }
 }

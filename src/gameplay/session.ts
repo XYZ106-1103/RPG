@@ -26,10 +26,10 @@ import { createTestSceneColliders } from "../physics/testSceneColliders";
 import { Lighting } from "../render/lighting";
 import { QUALITY_STORAGE_KEY, QualityManager, initialQualityLevel } from "../render/quality";
 import { ShadowSystem } from "../render/shadows";
-import { createTestScene } from "../render/testScene";
+import { TEST_COLD_REGION, TEST_COLD_VOLUME, createTestScene } from "../render/testScene";
+import { RegionFx } from "../render/postfx/regionFx";
 import { PostFxSystem } from "../render/postfx/postFx";
 import { ASHEN_PLAINS } from "../render/postfx/regions";
-import { generateLut } from "../render/postfx/lut";
 import type { AttackInstance } from "../sim/combat/types";
 import { PLAYER_TIMELINES } from "../sim/data/playerTimelines";
 import { isDead, isStaggered, type Entity, type EntityId } from "../sim/entity";
@@ -67,6 +67,7 @@ export interface RenderSystems {
   lighting: Lighting;
   shadows: ShadowSystem;
   postFx: PostFxSystem;
+  regions: RegionFx;
 }
 
 export interface SessionOptions {
@@ -215,7 +216,7 @@ export class GameSession {
     // 물리 → 캐릭터 컨트롤러(이동 포트) → 무기 스윕(HitQuery) → sim
     const physics = await PhysicsWorld.create(scene);
     createTestSceneColliders(physics, scene);
-    const environment = scene.meshes.filter((m) => m !== lighting.sky && m !== ground);
+    const environment = scene.meshes.filter((m) => m !== lighting.sky && m !== ground && m !== lighting.lanternFlame);
     const characters = new CharacterSystem(physics);
     // 애니메이션 이벤트 → 행동 타임라인, 캐릭터 모델 → 무기 소켓 궤적 (sim 생성 전에 끝낸다)
     const timelineOverrides = await animEventsTimelineLoader.load(HERO_PROFILE.name);
@@ -230,12 +231,22 @@ export class GameSession {
     // 정적 환경: 그림자를 드리우고 받는다 (바닥은 받기만). TODO(월드): 청크 로드/해제 때 addCaster/해제 함수로
     shadows.addCaster(environment);
     shadows.addReceiver([ground, ...environment]);
-    // 후처리 (SSAO → … → 비네팅/그레인). TODO(지역): 지역 볼륨 연결
-    const postFx = new PostFxSystem(scene, camera.camera, lighting.lantern, quality, generateLut(ASHEN_PLAINS.lutParams));
+    // 지역 볼륨(LUT·안개·노출 보간) → 후처리 (SSAO → … → 비네팅/그레인)
+    let postFxRef: PostFxSystem | null = null;
+    const regions = new RegionFx(
+      scene,
+      ASHEN_PLAINS,
+      { setExposureScale: (k) => (lighting.exposureScale = k), updateLut: (g) => postFxRef?.updateLut(g.lut) },
+      import.meta.env.BASE_URL,
+    );
+    regions.addProfile(TEST_COLD_REGION);
+    regions.addVolume(TEST_COLD_VOLUME);
+    const postFx = new PostFxSystem(scene, camera.camera, lighting.lantern, quality, regions.grading.lut);
+    postFxRef = postFx;
     // 락온 위치 조회는 렌더 보간 위치 (화면에 보이는 위치)
     let session: GameSession | null = null;
     const lockOn = new LockOnSystem(scene, camera.camera, physics, sim, hero.id, (id) => session?.views.get(id)?.display.position ?? sim.get(id)?.position ?? null);
-    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, { quality, lighting, shadows, postFx }, input, canvas, options, hero, heroModel);
+    session = new GameSession(scene, physics, characters, hitQuery, sim, camera, lockOn, { quality, lighting, shadows, postFx, regions }, input, canvas, options, hero, heroModel);
     return session;
   }
 
@@ -290,12 +301,13 @@ export class GameSession {
     this.marker.update(this.markerPos.visible, this.markerPos.x, this.markerPos.y, engine.getRenderWidth(), engine.getRenderHeight());
     this.sweepDebug.update();
     this.hitFeedback.update(dt);
-    // freeze()된 재질에는 setEnabled 변화가 반영되지 않으므로 intensity로 끈다 (testScene.ts 참고)
-    this.gfx.lighting.update(dt, this.lanternOn);
-    this.gfx.shadows.update();
     const cp = this.camera.camera.globalPosition;
     const hp = heroView.display.position;
-    this.gfx.postFx.update(dt, ASHEN_PLAINS, Math.hypot(cp.x - hp.x, cp.y - hp.y - 1, cp.z - hp.z)); // DOF 초점 = 카메라 ~ 플레이어 가슴
+    const look = this.gfx.regions.update(cp, dt);
+    // 지역 노출 보정(regions.update) 뒤에. freeze()된 재질에는 setEnabled 변화가 반영되지 않으므로 등불은 intensity로 끈다
+    this.gfx.lighting.update(dt, this.lanternOn);
+    this.gfx.shadows.update();
+    this.gfx.postFx.update(dt, look, Math.hypot(cp.x - hp.x, cp.y - hp.y - 1, cp.z - hp.z)); // DOF 초점 = 카메라 ~ 플레이어 가슴
 
     this.updatePanel();
     this.lockHint.update({ pointerLocked: this.input.isPointerLocked, failed: this.input.pointerLockFailed, usingGamepad: this.input.activeDevice === "gamepad" });
@@ -348,6 +360,7 @@ export class GameSession {
   private setDebug(on: boolean): void {
     this.physicsDebug.setEnabled(on);
     this.sweepDebug.setEnabled(on);
+    this.gfx.regions.setDebugVisible(on);
   }
 
   private colorOf(e: Readonly<Entity>): ViewColorKey {
@@ -404,6 +417,7 @@ export class GameSession {
       this.animLine(),
       `그림자   ${this.gfx.shadows.describe()}`,
       `후처리   ${this.gfx.postFx.describe()}`,
+      `지역     ${this.gfx.regions.describe()}`,
       `마우스   ${this.input.isPointerLocked ? "잠금됨 (Esc 해제)" : "화면 클릭 → 잠금"}  카메라 ${((this.camera.viewYaw * 180) / Math.PI).toFixed(0)}°`,
       "",
       ...this.eventLog,
