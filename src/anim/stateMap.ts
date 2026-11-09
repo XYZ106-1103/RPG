@@ -5,6 +5,7 @@
  *  - locomotion1d: 속도로 idle/walk/run/sprint 1D 블렌드 (자유 이동)
  *  - locomotion2d: 락온 중 walk_f/b/l/r 2D 블렌드 (대각은 인접 두 개)
  *  - clip: 클립 하나. time "action"이면 sim 상태 틱으로 시간을 정해 판정 프레임과 화면을 맞춘다
+ *  - layered: 상체는 clip(자세 유지), 하체는 이동 2D 블렌드 — 가드하며 걷기 (bodyParts.ts)
  *  - 반응(hit_front/hit_back/parry): sim 상태가 아니라 sim 이벤트로 잠깐 재생하는 클립
  */
 import type { AnimName } from "./clips";
@@ -29,7 +30,7 @@ export type AnimStateId =
   | "parry";
 
 export interface AnimStateDef {
-  kind: "locomotion1d" | "locomotion2d" | "clip";
+  kind: "locomotion1d" | "locomotion2d" | "clip" | "layered";
   clip?: AnimName;
   /** free: 렌더 시간으로 재생 / action: sim 상태 틱(진행도)으로 시간을 정함 */
   time: "free" | "action";
@@ -42,7 +43,8 @@ export const ANIM_STATES: Readonly<Record<AnimStateId, AnimStateDef>> = {
   locomotion: { kind: "locomotion1d", time: "free", loop: true },
   locomotion_lock: { kind: "locomotion2d", time: "free", loop: true },
   // guard 클립은 막기 동작 전체(36f)라, 들어 올린 자세(12f)에서 멈춰 버티는 동안 유지한다 TODO(애니): 가드 유지 루프 클립
-  guard: { kind: "clip", clip: "guard", time: "free", loop: false, hold: 12 },
+  // 상체만 가드 자세, 하체는 이동 방향대로 걷는다 (가드 중 이동 0.9m/s — 전신 클립이면 발이 미끄러진다)
+  guard: { kind: "layered", clip: "guard", time: "free", loop: false, hold: 12 },
   drink: { kind: "clip", clip: "drink", time: "action", loop: false },
   roll_f: { kind: "clip", clip: "roll_f", time: "action", loop: false },
   attack_light_1: { kind: "clip", clip: "attack_light_1", time: "action", loop: false },

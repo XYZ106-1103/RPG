@@ -3,6 +3,7 @@
  */
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { ANIM_NAMES, isAnimName, type AnimName } from "./clips";
+import type { BodyPart, GroupSplitter } from "./bodyParts";
 
 export interface Clip {
   name: AnimName;
@@ -21,8 +22,15 @@ export class ClipLibrary {
   private readonly clips = new Map<AnimName, Clip>();
   readonly missing: AnimName[] = [];
   readonly unknown: string[] = [];
+  /** 상체/하체판 캐시 */
+  private readonly parts = new Map<string, Clip>();
 
-  constructor(groups: readonly AnimationGroup[], character: string) {
+  /** @param splitter 상체/하체판을 만드는 함수 (없으면 part()가 전신 클립을 그대로 돌려준다) */
+  constructor(
+    groups: readonly AnimationGroup[],
+    character: string,
+    private readonly splitter: GroupSplitter | null = null,
+  ) {
     const byName = new Map<AnimName, AnimationGroup>();
     for (const g of groups) {
       if (isAnimName(g.name)) byName.set(g.name, g);
@@ -43,6 +51,18 @@ export class ClipLibrary {
   get(name: AnimName): Clip {
     const c = this.clips.get(name);
     if (!c) throw new Error(`클립 없음: ${name}`);
+    return c;
+  }
+
+  /** 클립의 상체판/하체판 (처음 부를 때 만든다). 시간·프레임은 원본과 같다 */
+  part(name: AnimName, part: BodyPart): Clip {
+    const key = `${name}:${part}`;
+    let c = this.parts.get(key);
+    if (!c) {
+      const full = this.get(name);
+      c = this.splitter ? { ...full, group: this.splitter(full.group, part) } : full;
+      this.parts.set(key, c);
+    }
     return c;
   }
 

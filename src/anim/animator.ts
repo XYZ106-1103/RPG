@@ -5,6 +5,7 @@
  *  - 행동 클립(공격/구르기 등): sim 진행도(상태 틱 ÷ 타임라인 길이) → 판정 프레임과 화면 동작이 정확히 맞는다
  *  - 이동 클립: 섞이는 클립끼리 정규화 위상을 공유 (접지 프레임이 같아 발이 꼬이지 않는다), 배속 = 실제 속도 ÷ 고유 속도
  *  - 나머지(피격/사망/가드): 렌더 시간
+ *  - 가드(layered): 상체판 가드 클립 + 하체판 이동 2D 블렌드 (같은 가중치 → 뼈마다 합 1)
  * 히트스톱 중에는 timeScale 0 → 모든 시간과 크로스페이드가 멈춘다 (행동 클립은 표시 틱이 멈춘 값을 따른다).
  */
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
@@ -16,6 +17,7 @@ import type { CharacterProfile } from "./characters/hero";
 import type { AnimName } from "./clips";
 import type { Clip, ClipLibrary } from "./clipLibrary";
 import { CrossfadeMixer } from "./mixer";
+import type { BodyPart } from "./bodyParts";
 import { ANIM_STATES, REACTION_ALLOWED, resolveAnimState, type AnimStateId, type ReactionId } from "./stateMap";
 import { crossfadeSeconds } from "./transitions";
 
@@ -116,7 +118,13 @@ export class CharacterAnimator {
       const def = ANIM_STATES[state];
       if (def.kind === "locomotion1d") this.addBlend(loco1d, W);
       else if (def.kind === "locomotion2d") this.addBlend(loco2d, W);
-      else if (def.clip) {
+      else if (def.kind === "layered" && def.clip) {
+        const upper = this.lib.part(def.clip, "upper");
+        const t = (this.freeTime.get(state) ?? 0) + dte;
+        this.freeTime.set(state, t);
+        this.addClip(upper, W, typeof def.hold === "number" ? Math.min(t, def.hold / 30) : Math.min(t, upper.duration));
+        this.addBlend(loco2d, W, "lower");
+      } else if (def.clip) {
         const clip = this.lib.get(def.clip);
         let time: number;
         if (def.time === "action") {
@@ -140,7 +148,8 @@ export class CharacterAnimator {
 
   private advanceLocomotion(dte: number, a: BlendWeights, b: BlendWeights): void {
     const wa = this.mixer.weight("locomotion");
-    const wb = this.mixer.weight("locomotion_lock");
+    // 가드의 하체 걸음도 2D 블렌드와 같은 위상을 쓴다
+    const wb = this.mixer.weight("locomotion_lock") + this.mixer.weight("guard");
     const total = wa + wb;
     this.idleTime += dte;
     if (total <= 0) return;
@@ -162,10 +171,10 @@ export class CharacterAnimator {
     if (wsum > 0 && dur > 0) this.locoPhase = (this.locoPhase + (dte * rate) / (dur / wsum)) % 1;
   }
 
-  private addBlend(blend: BlendWeights, W: number): void {
+  private addBlend(blend: BlendWeights, W: number, part?: BodyPart): void {
     for (const [name, w] of Object.entries(blend.weights) as [AnimName, number][]) {
       if (!(w > 0)) continue;
-      const clip = this.lib.get(name);
+      const clip = part ? this.lib.part(name, part) : this.lib.get(name);
       const time = name === "idle" ? this.idleTime % clip.duration : this.locoPhase * clip.duration;
       this.addClip(clip, W * w, time);
     }

@@ -19,6 +19,8 @@ export interface CharacterProfile {
   weapon: { hilt: readonly [number, number, number]; tip: readonly [number, number, number]; width: number };
   /** LOD 전환 거리 (m): LOD1, LOD2 */
   lodDistances: readonly [number, number];
+  /** 상체 뼈 (가드하며 걷기 등 상·하체 분리). 나머지는 하체 */
+  upperBodyBones: RegExp;
 }
 
 export const HERO_PROFILE: CharacterProfile = {
@@ -36,4 +38,6 @@ export const HERO_PROFILE: CharacterProfile = {
   lanternBone: "Lantern",
   weapon: { hilt: [0, 0, 0], tip: [0, 1.0, 0], width: 0.05 },
   lodDistances: [15, 35],
+  // 척추부터 위 (팔·손·머리·무기 소켓). 루트·골반·다리·망토·등불은 하체 — 걸음에 맞춰 흔들린다
+  upperBodyBones: /^(Spine|Chest|UpperChest|Neck|Head|Shoulder|UpperArm|LowerArm|Hand|Fingers|Thumb|Socket)/,
 };

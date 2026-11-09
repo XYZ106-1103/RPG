@@ -9,6 +9,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { CharacterAnimator } from "../anim/animator";
 import { HERO_PROFILE } from "../anim/characters/hero";
 import { ClipLibrary } from "../anim/clipLibrary";
+import { makeGroupSplitter } from "../anim/bodyParts";
 import { attachWeapon, bakeSocketTracks } from "../anim/sockets";
 import { animEventsTimelineLoader } from "../anim/timelineLoader";
 import { CharacterAsset, type CharacterModel } from "../assets/characterAsset";
@@ -523,7 +524,7 @@ async function loadHeroModel(scene: Scene, timelines: typeof PLAYER_TIMELINES): 
   try {
     const asset = await CharacterAsset.load(scene, HERO_PROFILE);
     const model = asset.instantiate("hero");
-    const lib = new ClipLibrary(model.groups, HERO_PROFILE.name);
+    const lib = new ClipLibrary(model.groups, HERO_PROFILE.name, makeGroupSplitter((bone) => HERO_PROFILE.upperBodyBones.test(bone)));
     const tracks = bakeSocketTracks(model, lib, HERO_PROFILE, timelines);
     const weapon = attachWeapon(scene, model, HERO_PROFILE);
     console.info(`[assets] ${HERO_PROFILE.glb}: 메시 ${model.meshes.length}개, 애니메이션 ${model.groups.length}개, 소켓 궤적 ${tracks.size}개`);

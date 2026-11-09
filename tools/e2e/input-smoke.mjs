@@ -11,6 +11,7 @@
  *  4. 마우스 이동(pointermove의 movementX) → 카메라 yaw가 바뀐다 (헤드리스 한계로 이 항목만 합성 이벤트)
  *  5. 왼쪽 클릭 → 공격 상태가 된다
  *  6. 캐릭터 모델: 서 있을 때 idle, 공격할 때 공격 애니메이션이 실제로 본을 움직인다 (디버그 패널 "포즈 N°/s")
+ *  7. 가드하며 걸으면 하체가 걷는다 (상·하체 분리 — 발 위치가 골반 기준으로 움직인다)
  *
  * 실행: npm run e2e:input   (Playwright와 Chromium이 필요: npm i -D playwright && npx playwright install chromium)
  */
@@ -97,6 +98,32 @@ try {
     await page.waitForTimeout(50);
   }
   check(attackPose >= 30, "공격 애니메이션이 실제로 포즈를 움직인다", `척추 최대 ${attackPose}°/s`);
+
+  // 가드하며 걷기: 하체가 걸음 클립을 따라 움직인다 (예전에는 전신 가드 자세로 발이 멈춘 채 미끄러졌다)
+  await page.waitForTimeout(1500); // 공격 끝
+  await page.keyboard.down("ShiftLeft");
+  await page.keyboard.down("KeyW");
+  await page.waitForTimeout(800);
+  const guardWalk = await page.evaluate(async () => {
+    const s = window.__ashenSession;
+    const m = s.heroModel?.model;
+    if (!m) return { travel: -1, state: "모델 없음" };
+    const foot = m.node("Foot.L");
+    const hips = m.node("Hips");
+    let last = null;
+    let travel = 0;
+    const t0 = performance.now();
+    while (performance.now() - t0 < 1200) {
+      await new Promise((r) => requestAnimationFrame(r));
+      const p = foot.getAbsolutePosition().subtract(hips.getAbsolutePosition());
+      if (last) travel += p.subtract(last).length();
+      last = p.clone();
+    }
+    return { travel, state: s.sim.players.get(s.hero.id).state };
+  });
+  await page.keyboard.up("KeyW");
+  await page.keyboard.up("ShiftLeft");
+  check(guardWalk.state === "guard" && guardWalk.travel > 0.3, "가드하며 걸으면 발이 움직인다", `상태 ${guardWalk.state}, 발 이동(골반 기준) ${guardWalk.travel.toFixed(2)}m`);
 
   check(errors.length === 0, "페이지 오류 없음", errors.join(" | "));
 } finally {

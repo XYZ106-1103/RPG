@@ -41,12 +41,19 @@ class FakeGroup {
   }
 }
 
-const LENGTHS: Record<string, number> = { idle: 3, walk_f: 1.0667, run_f: 0.6667, sprint: 0.6, attack_light_1: 0.8667, hit_front: 0.5, stagger: 1, parry: 0.6667 };
+const LENGTHS: Record<string, number> = { idle: 3, walk_f: 1.0667, walk_b: 1.0667, walk_l: 1.0667, walk_r: 1.0667, run_f: 0.6667, sprint: 0.6, attack_light_1: 0.8667, hit_front: 0.5, stagger: 1, parry: 0.6667, guard: 1.2 };
 
 function setup(names = Object.keys(LENGTHS)) {
   const groups = names.map((n) => new FakeGroup(n, 0, Math.round((LENGTHS[n] ?? 1) * 60)));
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  const lib = new ClipLibrary(groups as unknown as AnimationGroup[], "test");
+  // 상체/하체판: 이름에 __upper/__lower를 붙인 가짜 그룹 (실제는 bodyParts.ts가 뼈 이름으로 나눈다)
+  const splitter = (g: AnimationGroup, part: "upper" | "lower"): AnimationGroup => {
+    const src = g as unknown as FakeGroup;
+    const fg = new FakeGroup(`${src.name}__${part}`, src.from, src.to);
+    groups.push(fg);
+    return fg as unknown as AnimationGroup;
+  };
+  const lib = new ClipLibrary(groups as unknown as AnimationGroup[], "test", splitter);
   const anim = new CharacterAnimator(lib, HERO_PROFILE);
   const g = (n: string) => groups.find((x) => x.name === n) as FakeGroup;
   return { anim, g, lib, warn };
@@ -113,6 +120,39 @@ describe("CharacterAnimator", () => {
     expect(wf.weight).toBeGreaterThan(0.2);
     expect(rf.weight).toBeGreaterThan(0.2);
     expect(wf.frame / wf.to).toBeCloseTo(rf.frame / rf.to, 6); // 위상 공유
+  });
+
+  it("가드: 상체는 가드 자세(12f 유지), 하체는 이동 방향 걷기 — 같은 가중치라 뼈마다 합 1", () => {
+    const { anim, g } = setup();
+    const guard: AnimatorInput = { ...base, state: "guard" };
+    // 서서 가드: 하체는 idle
+    for (let i = 0; i < 60; i++) anim.update(1 / 60, guard);
+    expect(g("guard__upper").weight).toBeCloseTo(1, 5);
+    expect(g("guard__upper").frame).toBeCloseTo(12 * 2, 5); // 12f(30fps) = 0.4초 = 60fps 24프레임에서 멈춤
+    expect(g("idle__lower").weight).toBeCloseTo(1, 5);
+    expect(g("guard").isPlaying).toBe(false); // 전신 가드 클립은 쓰지 않는다
+    // 가드하며 뒤로 걷기 (yaw 0 = +Z가 앞): 하체는 walk_b
+    const back: AnimatorInput = { ...guard, moveZ: -PLAYER_MOVEMENT.guardSpeed };
+    for (let i = 0; i < 60; i++) anim.update(1 / 60, back);
+    expect(g("walk_b__lower").weight).toBeGreaterThan(0.8);
+    expect(g("guard__upper").weight).toBeCloseTo(1, 5);
+    // 걷는 동안 하체 프레임이 진행한다 (발이 움직인다)
+    const f0 = g("walk_b__lower").frame;
+    anim.update(1 / 10, back);
+    expect(g("walk_b__lower").frame).not.toBeCloseTo(f0, 3);
+  });
+
+  it("가드 → 이동 크로스페이드 중: 상체 = 가드 + 전신, 하체 = 하체 걷기 + 전신 (각 합 1)", () => {
+    const { anim, g } = setup();
+    for (let i = 0; i < 60; i++) anim.update(1 / 60, { ...base, state: "guard", moveZ: PLAYER_MOVEMENT.guardSpeed });
+    anim.update(0.05, { ...base, state: "move", moveZ: PLAYER_MOVEMENT.walkSpeed });
+    const upper = g("guard__upper").weight;
+    const lowerLegs = Object.keys(LENGTHS).reduce((s, n) => s + (g(`${n}__lower`)?.weight ?? 0), 0);
+    const full = ["idle", "walk_f", "run_f"].reduce((s, n) => s + g(n).weight, 0);
+    expect(upper).toBeGreaterThan(0);
+    expect(upper).toBeLessThan(1);
+    expect(upper + full).toBeCloseTo(1, 3);
+    expect(lowerLegs + full).toBeCloseTo(1, 3);
   });
 
   it("피격 반응: 자유 상태에서만 재생, 공격 중에는 무시", () => {
