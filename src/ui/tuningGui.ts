@@ -16,6 +16,7 @@ import type { ShadowSettings } from "../render/shadows";
 import type { PostFxSettings } from "../render/postfx/postFx";
 import { DYNAMIC_RESOLUTION_REVISION, type DynamicResolutionSettings } from "../render/dynamicResolution";
 import type { AdaptiveQualitySettings } from "../render/adaptiveQuality";
+import { BACKEND_PREFS, type BackendPref } from "../core/backendChoice";
 
 const STORAGE_KEY = "ashen-lantern.tuning.v1";
 
@@ -33,6 +34,8 @@ export interface TuningTargets {
   postFx: PostFxSettings;
   dynamicResolution: DynamicResolutionSettings;
   adaptiveQuality: AdaptiveQualitySettings;
+  /** 렌더 백엔드 선택 (바꾸면 새로고침) */
+  backend: { get(): BackendPref; set(v: BackendPref): void };
   /** 태양 그림자 필터 강제 (비교용, 저장하지 않음 — 디버그 F4와 같은 값) */
   shadowFilter: { get(): ShadowFilterOverride; set(v: ShadowFilterOverride): void };
 }
@@ -119,6 +122,16 @@ export function createTuningGui(t: TuningTargets): { dispose(): void } {
     .onChange((v: string) => {
       const lv = QUALITY_LEVELS.find((l) => l === v);
       if (lv) t.quality.setLevel(lv);
+    });
+
+  // 렌더 백엔드 (자동 = WebGPU 우선, Intel 내장 그래픽은 WebGL2). 바꾸면 새로고침해 적용, 선택은 저장
+  const be = { backend: t.backend.get() };
+  gui
+    .add(be, "backend", [...BACKEND_PREFS])
+    .name("렌더 백엔드 (새로고침)")
+    .onChange((v: string) => {
+      const pref = BACKEND_PREFS.find((b) => b === v);
+      if (pref) t.backend.set(pref);
     });
 
   const D = t.dynamicResolution;

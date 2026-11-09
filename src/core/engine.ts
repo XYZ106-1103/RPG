@@ -1,11 +1,12 @@
 /**
  * 렌더 엔진 생성: WebGPU 우선, 미지원/초기화 실패 시 WebGL2로 폴백한다.
- * 디버깅용으로 URL에 `?engine=webgl2`를 붙이면 WebGPU를 건너뛴다.
+ * 백엔드는 backendChoice.ts가 고른다: 주소 ?engine=auto|webgpu|webgl2 > 저장된 선택(?tune) > 자동(Intel 내장 그래픽이면 WebGL2).
  * WebGPU를 쓰지 못한 이유(fallbackReason)와 GPU 이름(gpuName)을 돌려줘 디버그 패널에 표시한다.
  */
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
+import { BACKEND_STORAGE_KEY, chooseBackend, parseBackendPref, type BackendPref } from "./backendChoice";
 
 export type RenderBackend = "WebGPU" | "WebGL2";
 
@@ -18,6 +19,8 @@ export interface EngineResult {
   gpuName: string;
   /** 소프트웨어 렌더링 (브라우저 GPU 가속 꺼짐 등) */
   software: boolean;
+  /** 백엔드 선택 (auto / webgpu / webgl2) */
+  pref: BackendPref;
 }
 
 export interface CreateEngineOptions {
@@ -132,14 +135,55 @@ function gpuNameOf(engine: AbstractEngine): string {
   }
 }
 
+/** 저장된 백엔드 선택 읽기/쓰기 (저장소를 못 쓰면 무시) */
+export function loadBackendPref(): BackendPref | null {
+  try {
+    return parseBackendPref(window.localStorage.getItem(BACKEND_STORAGE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export function saveBackendPref(pref: BackendPref): void {
+  try {
+    window.localStorage.setItem(BACKEND_STORAGE_KEY, pref);
+  } catch {
+    // 무시
+  }
+}
+
+/** 자동 판단용 WebGPU 어댑터 정보 (실패하면 null) */
+async function probeAdapter(): Promise<{ vendor: string; architecture: string; description: string } | null> {
+  try {
+    const adapter = await navigator.gpu?.requestAdapter({ powerPreference: "high-performance" });
+    const info = adapter?.info;
+    return info ? { vendor: info.vendor, architecture: info.architecture, description: info.description } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createEngine(canvas: HTMLCanvasElement, options: CreateEngineOptions = {}): Promise<EngineResult> {
   const once = takeFallbackOnce();
-  const forcedByUrl = new URLSearchParams(window.location.search).get(ENGINE_PARAM) === "webgl2";
-  const forceWebGL2 = options.forceWebGL2 ?? (forcedByUrl || once !== null);
+  // 주소 ?engine= 은 선택으로 저장한다 (다음에 주소 없이 열어도 유지)
+  const urlPref = parseBackendPref(new URLSearchParams(window.location.search).get(ENGINE_PARAM));
+  if (urlPref) saveBackendPref(urlPref);
+  const hasWebGPU = "gpu" in navigator && !!navigator.gpu;
+  const pref = urlPref ?? loadBackendPref() ?? "auto";
+  const adapter = hasWebGPU && pref === "auto" ? await probeAdapter() : null;
+  const decision = chooseBackend({
+    urlPref,
+    storedPref: loadBackendPref(),
+    hasWebGPU,
+    adapterVendor: adapter?.vendor ?? null,
+    adapterArchitecture: adapter?.architecture,
+    adapterDescription: adapter?.description,
+  });
+  const forceWebGL2 = options.forceWebGL2 ?? (decision.want === "webgl2" || once !== null);
 
   let engine: AbstractEngine | null = null;
   let backend: RenderBackend = "WebGL2";
-  let fallbackReason: string | null = forcedByUrl ? "주소에 ?engine=webgl2 (강제)" : once;
+  let fallbackReason: string | null = once ?? decision.reason;
   if (!forceWebGL2) {
     const gpu = await tryCreateWebGPU(canvas);
     if (gpu.engine) {
@@ -153,7 +197,7 @@ export async function createEngine(canvas: HTMLCanvasElement, options: CreateEng
   const gpuName = gpuNameOf(engine);
   const software = SOFTWARE_RENDERER.test(gpuName);
 
-  console.info(`[engine] 렌더 백엔드: ${backend} (${engine.description}) GPU: ${gpuName}${fallbackReason ? ` — WebGPU 안 씀: ${fallbackReason}` : ""}`);
+  console.info(`[engine] 렌더 백엔드: ${backend} (${engine.description}) GPU: ${gpuName} 선택: ${decision.pref}${fallbackReason ? ` — WebGPU 안 씀: ${fallbackReason}` : ""}`);
   if (software) console.warn("[engine] 소프트웨어 렌더링입니다 — 브라우저 GPU 가속이 꺼져 있을 수 있습니다 (브라우저 재시작, 하드웨어 가속 설정 확인)");
-  return { engine, backend, fallbackReason, gpuName, software };
+  return { engine, backend, fallbackReason, gpuName, software, pref: decision.pref };
 }

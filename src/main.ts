@@ -1,4 +1,4 @@
-import { createEngine } from "./core/engine";
+import { createEngine, saveBackendPref } from "./core/engine";
 import { GameLoop } from "./core/gameLoop";
 import { InputManager } from "./core/input";
 import { GameSession } from "./gameplay/session";
@@ -13,6 +13,7 @@ import { InputDebugOverlay } from "./ui/inputDebug";
  *  - ?physicsdebug     물리 디버그 뷰(충돌 셰이프 + 무기 궤적)를 켠 상태로 시작 (F3으로 토글)
  *  - ?tune             타격감/카메라/락온/입력 수치 조정 GUI (lil-gui, 이때만 불러온다)
  *  - ?quality=low|medium|high|ultra  품질 프리셋 (F4: 태양 그림자 필터 PCF/PCSS 비교 전환)
+ *  - ?engine=auto|webgpu|webgl2     렌더 백엔드 (저장됨, ?tune에서도 변경)
  */
 const params = new URLSearchParams(window.location.search);
 const SIM_HZ = Math.min(240, Math.max(1, Number(params.get("simhz")) || SIM_DEFAULT_HZ));
@@ -21,7 +22,7 @@ async function main(): Promise<void> {
   const canvas = document.getElementById("renderCanvas");
   if (!(canvas instanceof HTMLCanvasElement)) throw new Error("#renderCanvas 캔버스를 찾을 수 없습니다.");
 
-  const { engine, backend, gpuName, fallbackReason, software } = await createEngine(canvas);
+  const { engine, backend, gpuName, fallbackReason, software, pref } = await createEngine(canvas);
   const input = new InputManager(canvas);
   const session = await GameSession.create(engine, canvas, input, {
     interpolate: !params.has("nointerp"),
@@ -56,6 +57,16 @@ async function main(): Promise<void> {
       postFx: session.gfx.postFx.settings,
       dynamicResolution: session.dynRes.settings,
       adaptiveQuality: session.adaptive.settings,
+      backend: {
+        get: () => pref,
+        set: (v) => {
+          saveBackendPref(v);
+          // 주소의 ?engine= 이 저장값보다 우선하므로 빼고 다시 연다
+          const u = new URL(window.location.href);
+          u.searchParams.delete("engine");
+          window.location.replace(u);
+        },
+      },
       shadowFilter: {
         get: () => session.gfx.shadows.filterOverride,
         set: (v) => {
